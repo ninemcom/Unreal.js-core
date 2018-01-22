@@ -3,6 +3,7 @@
 #include "AdvancedPreviewScene.h"
 #include "Runtime/Engine/Public/Slate/SceneViewport.h"
 #include "Engine/Canvas.h"
+#include "EngineUtils.h"
 #include "OverlaySlot.h"
 #include "AssetViewerSettings.h"
 #include "Modules/ModuleVersion.h"

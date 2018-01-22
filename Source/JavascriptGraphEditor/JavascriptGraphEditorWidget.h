@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Widget.h"
+#include "JavascriptGraphEditorLibrary.h"
 #include "JavascriptGraphEditorWidget.generated.h"
 
 class UJavascriptGraphEdGraph;

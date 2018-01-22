@@ -69,7 +69,7 @@ namespace {
 		void DispatchMessages()
 		{
 			// Dispatch within scope
-			Isolate::Scope isolate_scope(isolate_);
+			v8::Isolate::Scope isolate_scope(isolate_);
 
 			// Copy messages first from queue
 			TArray<TArray<uint8>> Messages = MoveTemp(PendingMessages);
@@ -250,8 +250,8 @@ namespace {
 class FInspector : public IJavascriptInspector, public FTickableAnyObject, public v8_inspector::V8InspectorClient, public FOutputDevice
 {
 public:
-	Isolate* isolate_;
-	Persistent<Context> context_;
+	v8::Isolate* isolate_;
+	v8::Persistent<v8::Context> context_;
 	bool terminated_{ false };
 	bool running_nested_loop_{ false };
 	std::unique_ptr<v8_inspector::V8Inspector> v8inspector;
@@ -271,7 +271,7 @@ public:
 		return FString::Printf(TEXT("chrome-devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws=127.0.0.1:%d"), Port);
 	}
 
-	FInspector(v8::Platform* platform, int32 InPort, Local<Context> InContext)
+	FInspector(v8::Platform* platform, int32 InPort, v8::Local<v8::Context> InContext)
 		: Port(InPort)
 	{
 		platform_ = platform;
@@ -293,10 +293,10 @@ public:
 		Install(InPort);
 
 		{
-			Isolate::Scope isolate_scope(isolate_);
-			Context::Scope context_scope(InContext);
+			v8::Isolate::Scope isolate_scope(isolate_);
+			v8::Context::Scope context_scope(InContext);
 
-			TryCatch try_catch;
+			v8::TryCatch try_catch;
 
 			auto source = TEXT("'log error warn info void assert'.split(' ').forEach(x => { let o = console[x].bind(console); let y = $console[x].bind($console); console['$'+x] = o; console[x] = function () { y(...arguments); return o(...arguments); }})");
 			auto script = v8::Script::Compile(I.String(source));
@@ -338,14 +338,14 @@ public:
 
 		if (Category != NAME_Javascript)
 		{
-			HandleScope handle_scope(isolate_);
+			v8::HandleScope handle_scope(isolate_);
 
 			FIsolateHelper I(isolate_);
 
-			Isolate::Scope isolate_scope(isolate_);
-			Context::Scope context_scope(context());
+			v8::Isolate::Scope isolate_scope(isolate_);
+			v8::Context::Scope context_scope(context());
 
-			TryCatch try_catch;
+			v8::TryCatch try_catch;
 
 			auto console = context()->Global()->Get(I.Keyword("console")).As<v8::Object>();
 
@@ -358,14 +358,14 @@ public:
 
 			if (Verbosity == ELogVerbosity::Display)
 			{
-				Handle<Value> argv[2];
+				v8::Handle<v8::Value> argv[2];
 				argv[0] = I.String(FString::Printf(TEXT("%%c%s: %s"), *Category.ToString(), V));
 				argv[1] = I.String(TEXT("color:gray"));
 				function->Call(console, 2, argv);
 			}
 			else
 			{
-				Handle<Value> argv[1];
+				v8::Handle<v8::Value> argv[1];
 				argv[0] = I.String(FString::Printf(TEXT("%s: %s"), *Category.ToString(), V));
 				function->Call(console, 1, argv);
 			}
@@ -377,7 +377,7 @@ public:
 		delete this;
 	}
 
-	Local<Context> context() { return Local<v8::Context>::New(isolate_, context_); }
+	v8::Local<v8::Context> context() { return v8::Local<v8::Context>::New(isolate_, context_); }
 
 	void runMessageLoopOnPause(int context_group_id) override
 	{
@@ -590,7 +590,7 @@ public:
 	}
 };
 
-IJavascriptInspector* IJavascriptInspector::Create(int32 InPort, Local<Context> InContext)
+IJavascriptInspector* IJavascriptInspector::Create(int32 InPort, v8::Local<v8::Context> InContext)
 {
 	return new FInspector(reinterpret_cast<v8::Platform*>(IV8::Get().GetV8Platform()), InPort, InContext);
 }

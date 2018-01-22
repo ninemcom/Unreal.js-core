@@ -1,3 +1,4 @@
+#include "V8PCH.h"
 #include "JavascriptLibrary.h"
 #include "Engine/DynamicBlueprintBinding.h"
 #include "JavascriptContext.h"
@@ -9,6 +10,8 @@
 #include "AI/Navigation//NavigationSystem.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "Modules/ModuleVersion.h"
+#include "Misc/FileHelper.h"
+#include "UObject/MetaData.h"
 
 struct FPrivateSocketHandle
 {

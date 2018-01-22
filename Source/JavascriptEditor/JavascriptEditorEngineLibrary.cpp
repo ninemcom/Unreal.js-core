@@ -3,6 +3,8 @@
 #include "ObjectTools.h"
 #include "Engine/Engine.h"
 #include "Editor/EditorEngine.h"
+#include "IAssetTools.h"
+#include "AssetToolsModule.h"
 
 #if WITH_EDITOR
 UWorld* UJavascriptEditorEngineLibrary::GetEditorWorld(UEngine* Engine)

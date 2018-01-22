@@ -1,5 +1,6 @@
 #pragma once
 
+#include "V8PCH.h"
 #include "Translator.h"
 
 struct FV8Exception

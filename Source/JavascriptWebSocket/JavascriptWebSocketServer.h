@@ -4,6 +4,7 @@
 
 class FJavascriptWebSocketServer;
 class UJavascriptWebSocket;
+class FJavascriptWebSocket;
 
 UCLASS()
 class UJavascriptWebSocketServer : public UObject

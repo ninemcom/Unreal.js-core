@@ -1,5 +1,7 @@
 #include "JavascriptGraphEditorLibrary.h"
 #include "JavascriptGraphConnectionDrawingPolicy.h"
+#include "JavascriptGraphEdGraph.h"
+#include "JavascriptGraphEdNode.h"
 #include "SJavascriptGraphEdNode.h"
 #include "Editor/GraphEditor/Public/SGraphPanel.h"
 

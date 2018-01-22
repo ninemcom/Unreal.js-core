@@ -1,6 +1,9 @@
 #pragma once
 
+#include "UMG.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
 #include "JavascriptMultiLineEditableTextBox.h"
+#include "JavascriptTextModel.h"
 #include "JavascriptUMGBlueprintLibrary.generated.h"
 
 class UJavascriptTextModel;

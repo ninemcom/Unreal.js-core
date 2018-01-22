@@ -7,6 +7,8 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "JSWebSocket.h"
 #include "JavascriptWebSocketModule.h"
 
+#include "IPAddress.h"
+
 uint8 PREPADDING_JS[LWS_PRE];
 
 static void lws_debugLogS_JS(int level, const char *line)

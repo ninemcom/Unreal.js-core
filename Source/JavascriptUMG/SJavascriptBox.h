@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Widgets/Layout/SBox.h"
+
 class SJavascriptBox
 	: public SBox, public FGCObject
 {

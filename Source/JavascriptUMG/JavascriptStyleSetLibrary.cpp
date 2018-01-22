@@ -1,5 +1,6 @@
 #include "JavascriptStyleSetLibrary.h"
 #include "SlateStyleRegistry.h"
+#include "Styling/SlateStyle.h"
 
 static UStruct* Struct_SlateColor;
 static UStruct* Struct_ButtonStyle;

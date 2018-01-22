@@ -1,6 +1,7 @@
 #include "JavascriptMenuLibrary.h"
 #include "SJavascriptBox.h"
 #include "Framework/Commands/GenericCommands.h"
+#include "Components/Widget.h"
 
 FJavascriptUICommandList UJavascriptMenuLibrary::CreateUICommandList()
 {

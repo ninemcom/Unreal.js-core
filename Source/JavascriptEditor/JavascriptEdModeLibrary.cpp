@@ -1,4 +1,5 @@
 #include "JavascriptEdModeLibrary.h"
+#include "EdMode.h"
 
 #if WITH_EDITOR
 

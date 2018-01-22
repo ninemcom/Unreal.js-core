@@ -1,5 +1,7 @@
 #pragma once
 
+#include "JavascriptIsolate_Private.h"
+
 struct FStructMemoryInstance;
 
 struct FJavascriptContext : TSharedFromThis<FJavascriptContext>

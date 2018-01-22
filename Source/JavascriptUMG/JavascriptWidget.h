@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UserWidget.h"
+#include "Components/PanelSlot.h"
 #include "JavascriptWidget.generated.h"
 
 class UJavascriptWidget;

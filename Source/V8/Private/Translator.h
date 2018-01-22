@@ -1,4 +1,5 @@
 #pragma once
+#include "V8PCH.h"
 
 enum class EPropertyOwner
 {

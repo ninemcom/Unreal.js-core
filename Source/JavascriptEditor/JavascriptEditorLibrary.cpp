@@ -24,6 +24,9 @@
 #include "EngineUtils.h"
 #include "GameFramework/Volume.h"
 #include "Components/BrushComponent.h"
+#include "WorkspaceMenuStructureModule.h"
+#include "WorkspaceMenuStructure.h"
+#include "AssetRegistryModule.h"
 
 #include "../../Launch/Resources/Version.h"
 #include "PlatformFileManager.h"

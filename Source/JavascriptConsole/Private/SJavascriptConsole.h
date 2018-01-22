@@ -1,6 +1,7 @@
 #pragma once
 #include "SCompoundWidget.h"
 #include "CurveSequence.h"
+#include "JavascriptConsoleModule.h"
 
 /**
  * Debug console widget, designed to be summoned on top of a viewport or window

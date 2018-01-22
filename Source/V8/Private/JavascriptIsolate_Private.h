@@ -1,7 +1,10 @@
 #pragma once
 
+#include "V8PCH.h"
+
 struct FStructMemoryInstance;
 class FJavascriptIsolate;
+struct IPropertyOwner;
 
 struct FPendingClassConstruction
 {
