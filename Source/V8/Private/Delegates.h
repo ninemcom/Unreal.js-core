@@ -1,5 +1,7 @@
 #pragma once
 
+#include "V8PCH.h"
+
 namespace v8
 {
 	struct IDelegateManager
