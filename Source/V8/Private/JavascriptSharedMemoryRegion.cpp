@@ -1,6 +1,7 @@
 #include "JavascriptSharedMemoryRegion.h"
 #include "JavascriptSemaphore.h"
 #include "JavascriptContext.h"
+#include "UObject/Package.h"
 
 //@HACK : Current windows implementation creates 'global' shared memory handle which requires privilege.
 #if PLATFORM_WINDOWS
@@ -214,7 +215,7 @@ UJavascriptSharedMemoryRegion* UJavascriptSharedMemoryRegion::Create(const FName
 	auto Region = FPlatformMemory_Hack::MapNamedSharedMemoryRegion(Name.ToString(), bCreate, AccessMode, Size);
 	if (Region)
 	{
-		auto Object = NewObject<UJavascriptSharedMemoryRegion>(GetTransientPackage(), Name);
+		UJavascriptSharedMemoryRegion* Object = NewObject<UJavascriptSharedMemoryRegion>(GetTransientPackage(), Name);
 		Object->Region = Region;
 		return Object;
 	}

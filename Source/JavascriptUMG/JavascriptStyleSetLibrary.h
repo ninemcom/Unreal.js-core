@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "Styling/SlateTypes.h"
 #include "JavascriptStyleSetLibrary.generated.h"
 
 USTRUCT(BlueprintType)

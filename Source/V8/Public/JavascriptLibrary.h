@@ -4,10 +4,11 @@
 #include "JavascriptProfile.h"
 #include "JavascriptIsolate.h"
 #include "Engine/StreamableManager.h"
-#include "IPAddress.h"
 #include "AI/Navigation/RecastNavMesh.h"
 #include "Model.h"
 #include "JavascriptLibrary.generated.h"
+
+class FInternetAddr;
 
 USTRUCT(BlueprintType)
 struct V8_API FDirectoryItem
@@ -238,8 +239,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	static void RequestAsyncLoad(const FJavascriptStreamableManager& Manager, const TArray<FStringAssetReference>& TargetsToStream, FJavascriptFunction DelegateToCall, int32 Priority);
 
-	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
-	static void V8_SetFlagsFromString(const FString& V8Flags);
+	//UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	//static void V8_SetFlagsFromString(const FString& V8Flags);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	static void V8_SetIdleTaskBudget(float BudgetInSeconds);
@@ -379,6 +380,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
 	static TArray<ULevel*> GetLevels(UWorld* World);
 
+#if 0
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
 	static FString GetFunctionName(FJavascriptProfileNode Node);
 
@@ -425,6 +427,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
 	static FString GetDeoptInfo_Stack(FJavascriptProfileNode Node, int32 index);
+#endif
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
 	static FString GetArchetypePathName(UObject* Object);

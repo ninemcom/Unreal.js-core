@@ -9,8 +9,6 @@
 #include "JavascriptIsolate_Private.h"
 #include "JavascriptContext_Private.h"
 
-using namespace v8;
-
 DEFINE_LOG_CATEGORY(Javascript);
 
 UJavascriptIsolate::UJavascriptIsolate(const FObjectInitializer& ObjectInitializer)
@@ -57,20 +55,26 @@ UJavascriptContext* UJavascriptIsolate::CreateContext()
 
 void UJavascriptIsolate::GetHeapStatistics(FJavascriptHeapStatistics& Statistics)
 {
-	v8::HeapStatistics stats;
+	//v8::HeapStatistics stats;
 
 	if (JavascriptIsolate.IsValid())
 	{
-		JavascriptIsolate->isolate_->GetHeapStatistics(&stats);
+		size_t limit = 0, usage = 0;
+		JsGetRuntimeMemoryLimit(JavascriptIsolate->runtime_, &limit);
+		JsGetRuntimeMemoryUsage(JavascriptIsolate->runtime_, &usage);
 
-		Statistics.TotalHeapSize = stats.total_heap_size();
-		Statistics.TotalHeapSizeExecutable = stats.total_heap_size_executable();
-		Statistics.TotalPhysicalSize = stats.total_physical_size();
-		Statistics.TotalAvailableSize = stats.total_available_size();
-		Statistics.UsedHeapSize = stats.used_heap_size();
-		Statistics.HeapSizeLimit = stats.heap_size_limit();
-		Statistics.MallocedMemory = stats.malloced_memory();
-		Statistics.bDoesZapGarbage = !!stats.does_zap_garbage();
+		Statistics.HeapSizeLimit = limit;
+		Statistics.UsedHeapSize = usage;
+		//JavascriptIsolate->isolate_->GetHeapStatistics(&stats);
+
+		//Statistics.TotalHeapSize = stats.total_heap_size();
+		//Statistics.TotalHeapSizeExecutable = stats.total_heap_size_executable();
+		//Statistics.TotalPhysicalSize = stats.total_physical_size();
+		//Statistics.TotalAvailableSize = stats.total_available_size();
+		//Statistics.UsedHeapSize = stats.used_heap_size();
+		//Statistics.HeapSizeLimit = stats.heap_size_limit();
+		//Statistics.MallocedMemory = stats.malloced_memory();
+		//Statistics.bDoesZapGarbage = !!stats.does_zap_garbage();
 	}
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Engine/EngineBaseTypes.h"
 #include "JavascriptIsolate.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "JavascriptTestLibrary.generated.h"

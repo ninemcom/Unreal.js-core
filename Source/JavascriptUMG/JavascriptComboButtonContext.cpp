@@ -1,4 +1,5 @@
 #include "JavascriptComboButtonContext.h"
+#include "Widgets/SNullWidget.h"
 
 TSharedRef<SWidget> UJavascriptComboButtonContext::Public_OnGetWidget()
 {

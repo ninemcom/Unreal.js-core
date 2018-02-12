@@ -1,6 +1,5 @@
 #pragma once
 
-#include "JavascriptLibrary.h"
 #include "JavascriptOutputDevice.generated.h"
 
 

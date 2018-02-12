@@ -24,9 +24,11 @@ THIRD_PARTY_INCLUDES_END
 #endif
 
 THIRD_PARTY_INCLUDES_START
-#include "v8-inspector.h"
-#include "v8-platform.h"
-#include "libplatform/libplatform.h"
+//#include <vector>
+//#include "v8-inspector.h"
+//#include "v8-platform.h"
+//#include "libplatform/libplatform.h"
+//#include "node_platform.h"
 THIRD_PARTY_INCLUDES_END
 
 #if WITH_EDITOR 
@@ -388,9 +390,7 @@ public:
 		{
 			lws_service(WebSocketContext, 0);
 
-			while (v8::platform::PumpMessageLoop(platform_, isolate_))
-			{
-			}
+			static_cast<node::NodePlatform*>(platform_)->FlushForegroundTasksInternal();
 		}
 		terminated_ = false;
 		running_nested_loop_ = false;

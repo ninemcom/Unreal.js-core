@@ -1,7 +1,10 @@
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #include "JavascriptTestLibrary.h"
 #include "Misc/AutomationTest.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 struct FJavascriptAutomatedTestImpl : FAutomationTestBase, TSharedFromThis<FJavascriptAutomatedTestImpl>

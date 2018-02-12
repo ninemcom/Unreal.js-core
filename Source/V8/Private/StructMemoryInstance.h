@@ -115,9 +115,9 @@ struct FStructMemoryInstance
 		return TSharedRef<FStructMemoryInstance>(new FStructMemoryInstance(Struct, InOwner, Source));
 	}
 
-	static FStructMemoryInstance* FromV8(v8::Local<v8::Value> Value)
+	static FStructMemoryInstance* FromChakra(JsValueRef Value)
 	{
-		auto Memory = RawMemoryFromV8(Value);
+		auto Memory = RawMemoryFromChakra(Value);
 		return reinterpret_cast<FStructMemoryInstance*>(Memory);
 	}	
 };

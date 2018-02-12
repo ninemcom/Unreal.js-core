@@ -1,4 +1,5 @@
 #include "JavascriptTextBlock.h"
+#include "Widgets/Text/STextBlock.h"
 
 UJavascriptTextBlock::UJavascriptTextBlock(const FObjectInitializer& ObjectInitializer)
 : Super(ObjectInitializer)

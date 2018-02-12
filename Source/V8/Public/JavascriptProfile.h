@@ -1,5 +1,8 @@
 #pragma once
 
+// chakra core does not support cpu profiling
+#if 0
+
 #include "JavascriptProfile.generated.h"
 
 USTRUCT(BlueprintType)
@@ -44,3 +47,5 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Javascript | Scripting")
 	static void SetIdle(bool is_idle);
 };
+
+#endif

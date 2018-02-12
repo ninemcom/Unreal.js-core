@@ -9,28 +9,24 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "Helpers.h"
 #include "JavascriptStats.h"
 
-namespace v8
+namespace chakra
 {
-	void CallJavascriptFunction(Handle<Context> context, Handle<Value> This, UFunction* SignatureFunction, Handle<Function> func, void* Parms)
+	void CallJavascriptFunction(JsContextRef context, JsValueRef This, UFunction* SignatureFunction, JsFunctionRef func, void* Parms)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_JavascriptFunctionCallToJavascript);
-
-		auto isolate = context->GetIsolate();
-
-		HandleScope handle_scope(isolate);
 
 		auto Buffer = reinterpret_cast<uint8*>(Parms);		
 
 		enum { MaxArgs = 32 };
 
-		Handle<Value> argv[MaxArgs];
-		int argc = 0;
+		JsValueRef argv[MaxArgs] = { This }; // first argument should be thisArg
+		int argc = 1;
 
 		TFieldIterator<UProperty> Iter(SignatureFunction);
 		for (; Iter && argc < MaxArgs && (Iter->PropertyFlags & (CPF_Parm | CPF_ReturnParm)) == CPF_Parm; ++Iter)
 		{
 			UProperty* Param = *Iter;
-			argv[argc++] = ReadProperty(isolate, Param, Buffer, FNoPropertyOwner());
+			argv[argc++] = ReadProperty(Param, Buffer, FNoPropertyOwner());
 		}
 
 		UProperty* ReturnParam = nullptr;
@@ -44,13 +40,18 @@ namespace v8
 			}
 		}
 
-		TryCatch try_catch;		
+		JsValueRef value = JS_INVALID_REFERENCE;
+		JsCallFunction(func, argv, argc, &value);
 
-		auto value = func->Call(This, argc, argv);
+		bool hasException = false;
+		JsHasException(&hasException);
 
-		if (try_catch.HasCaught())
+		if (hasException)
 		{
-			FJavascriptContext::FromV8(context)->UncaughtException(FV8Exception::Report(try_catch));
+			JsValueRef Exception = JS_INVALID_REFERENCE;
+			JsGetAndClearException(&Exception);
+
+			FJavascriptContext::FromChakra(context)->UncaughtException(FV8Exception::Report(Exception));
 		}
 
 		bool bHasAnyOutParams = false;
@@ -70,14 +71,15 @@ namespace v8
 
 		if (bHasAnyOutParams)
 		{
-			FIsolateHelper I(isolate);
-			if (value.IsEmpty() || !value->IsObject())
+			FContextScope scope(context);
+
+			JsValueType valueType = JsValueType::JsUndefined;
+			JsGetValueType(value, &valueType);
+			if (valueType != JsValueType::JsObject)
 			{
-				I.Throw(TEXT("..."));
+				chakra::Throw(TEXT("..."));
 				return;
 			}
-
-			auto Object = value->ToObject();
 
 			// Iterate over parameters again
 			for (TFieldIterator<UProperty> It(SignatureFunction); It; ++It)
@@ -89,20 +91,26 @@ namespace v8
 				// pass return parameter as '$'
 				if (PropertyFlags & CPF_ReturnParm)
 				{
-					auto sub_value = Object->Get(I.Keyword("$"));
+					JsPropertyIdRef SubValueProp = JS_INVALID_REFERENCE;
+					JsValueRef SubValue = JS_INVALID_REFERENCE;
+					JsGetPropertyIdFromName(TEXT("$"), &SubValueProp);
+					JsGetProperty(value, SubValueProp, &SubValue);
 
-					WriteProperty(isolate, ReturnParam, Buffer, sub_value);						
+					WriteProperty(ReturnParam, Buffer, SubValue);						
 				}
 				// rejects 'const T&' and pass 'T&' as its name
 				else if ((PropertyFlags & (CPF_ConstParm | CPF_OutParm)) == CPF_OutParm)
 				{
-					auto sub_value = Object->Get(I.Keyword(Param->GetName()));
+					JsPropertyIdRef SubValueProp = JS_INVALID_REFERENCE;
+					JsValueRef SubValue = JS_INVALID_REFERENCE;
+					JsGetPropertyIdFromName(*Param->GetName(), &SubValueProp);
+					JsGetProperty(value, SubValueProp, &SubValue);
 
-					if (!sub_value.IsEmpty())
-					{
+					//if (!sub_value.IsEmpty())
+					//{
 						// value can be null if isolate is in trouble
-						WriteProperty(isolate, Param, Buffer, sub_value);
-					}						
+						WriteProperty(Param, Buffer, SubValue);
+					//}						
 				}
 			}			
 		}
@@ -110,7 +118,7 @@ namespace v8
 		{
 			if (ReturnParam)
 			{
-				WriteProperty(isolate, ReturnParam, Buffer, value);
+				WriteProperty(ReturnParam, Buffer, value);
 			}
 		}		
 	}

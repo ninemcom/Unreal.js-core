@@ -4,6 +4,8 @@
 #include "Helpers.h"
 #include "JavascriptLibrary.h"
 
+#if NODE_PROFILING
+
 using namespace v8;
 
 void UJavascriptProfile::BeginDestroy()
@@ -175,3 +177,5 @@ FString UJavascriptLibrary::GetDeoptInfo_Stack(FJavascriptProfileNode Node, int3
 	}
 	return out;
 }
+
+#endif

@@ -211,11 +211,11 @@ struct TokenWriter
 
 struct TypingGenerator : TypingGeneratorBase
 {
-	TypingGenerator(FJavascriptIsolate& InEnvironment)
-	: Environment(InEnvironment)
+	TypingGenerator(FJavascriptContext& InContext)
+	: Context(InContext)
 	{}
 	virtual ~TypingGenerator() {}
-	FJavascriptIsolate& Environment;
+	FJavascriptContext& Context;
 
 	FString Text;
 
@@ -499,14 +499,14 @@ struct TypingGenerator : TypingGeneratorBase
 			w.push(";\n");
 
 			TArray<UFunction*> Functions;
-			Environment.BlueprintFunctionLibraryMapping.MultiFind(source, Functions);
+			Context.BlueprintFunctionLibraryMapping.MultiFind(source, Functions);
 
 			for (auto Function : Functions)
 			{
 				write_function(Function, true);
 			}
 
-			Environment.BlueprintFunctionLibraryFactoryMapping.MultiFind(source, Functions);
+			Context.BlueprintFunctionLibraryFactoryMapping.MultiFind(source, Functions);
 			for (auto Function : Functions)
 			{
 				write_function(Function, false, true);

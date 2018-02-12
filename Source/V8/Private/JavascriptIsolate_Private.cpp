@@ -1,4 +1,3 @@
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #ifndef THIRD_PARTY_INCLUDES_START
 #	define THIRD_PARTY_INCLUDES_START
@@ -35,10 +34,11 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "IV8.h"
 
 THIRD_PARTY_INCLUDES_START
-#include <libplatform/libplatform.h>
+//#include <libplatform/libplatform.h>
 THIRD_PARTY_INCLUDES_END
 
-using namespace v8;
+//using namespace v8;
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 // HACK FOR ACCESS PRIVATE MEMBERS
 class hack_private_key {};
@@ -55,14 +55,13 @@ FObjectInitializer const& FObjectInitializer::SetDefaultSubobjectClass<hack_priv
 
 struct FPrivateJavascriptFunction
 {
-	Isolate* isolate;
-	UniquePersistent<Context> context;
-	UniquePersistent<Function> Function;
+	Persistent<JsContextRef> context;
+	Persistent<JsFunctionRef> Function;
 };
 
 struct FPrivateJavascriptRef
 {
-	UniquePersistent<Object> Object;
+	Persistent<JsValueRef> Object;
 };
 
 template <typename CppType>
@@ -77,21 +76,33 @@ struct TStructReader
 	bool Read(Isolate* isolate, Local<Value> Value, CppType& Target) const;
 };
 
-static v8::ArrayBuffer::Contents GCurrentContents;
+static JsValueRef GCurrentContents = JS_INVALID_REFERENCE;
 
 int32 FArrayBufferAccessor::GetSize()
 {
-	return GCurrentContents.ByteLength();
+	if (GCurrentContents == JS_INVALID_REFERENCE)
+		return 0;
+
+	ChakraBytePtr dataPtr = nullptr;
+	unsigned dataSize = 0;
+	JsGetArrayBufferStorage(GCurrentContents, &dataPtr, &dataSize);
+	return dataSize;
 }
 
 void* FArrayBufferAccessor::GetData()
 {
-	return GCurrentContents.Data();
+	if (GCurrentContents == JS_INVALID_REFERENCE)
+		return nullptr;
+
+	ChakraBytePtr dataPtr = nullptr;
+	unsigned dataSize = 0;
+	JsGetArrayBufferStorage(GCurrentContents, &dataPtr, &dataSize);
+	return dataPtr;
 }
 
 void FArrayBufferAccessor::Discard()
 {
-	GCurrentContents = v8::ArrayBuffer::Contents();
+	GCurrentContents = JS_INVALID_REFERENCE;
 }
 
 FString PropertyNameToString(UProperty* Property)

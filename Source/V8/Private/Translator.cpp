@@ -1,10 +1,10 @@
 #include "Translator.h"
 
-namespace v8
+namespace chakra
 {
-	UObject* UObjectFromV8(Local<Value> Value)
+	UObject* UObjectFromChakra(JsValueRef Value)
 	{
-		uint8* Memory = RawMemoryFromV8(Value);
+		uint8* Memory = RawMemoryFromChakra(Value);
 		if (Memory)
 		{
 			auto uobj = reinterpret_cast<UObject*>(Memory);
@@ -17,52 +17,54 @@ namespace v8
 		return nullptr;
 	}
 
-	uint8* RawMemoryFromV8(Local<Value> Value)
+	uint8* RawMemoryFromChakra(JsValueRef Value)
 	{
-		if (Value.IsEmpty() || !Value->IsObject() || Value->IsUndefined() || Value->IsNull())
-		{
+		if (Value == JS_INVALID_REFERENCE)
 			return nullptr;
-		}
 
-		auto v8_obj = Value->ToObject();
-		if (v8_obj->InternalFieldCount() == 0)
-		{
+		JsValueType type;
+		if (JsGetValueType(Value, &type) != JsNoError)
 			return nullptr;
-		}
-		return reinterpret_cast<uint8*>(v8_obj->GetAlignedPointerFromInternalField(0));		
+
+		if (type == JsUndefined || type == JsNull || type != JsObject)
+			return nullptr;
+
+		bool hasExternalData;
+		if (JsHasExternalData(Value, &hasExternalData) != JsNoError || !hasExternalData)
+			return nullptr;
+
+		void* dataPtr = nullptr;
+		JsGetExternalData(Value, &dataPtr);
+
+		return reinterpret_cast<uint8*>(dataPtr);		
 	}
 
-	UClass* UClassFromV8(Isolate* isolate_, Local<Value> Value)
+	UClass* UClassFromChakra(JsValueRef Value)
 	{
-		if (Value.IsEmpty() || !Value->IsObject())
-		{
+		if (Value == JS_INVALID_REFERENCE)
 			return nullptr;
-		}
 
-		auto v8_obj = Value->ToObject();
-		if (v8_obj.IsEmpty())
-		{
+		JsValueType type;
+		if (JsGetValueType(Value, &type) != JsNoError)
 			return nullptr;
-		}
 
-		if (v8_obj->IsFunction())
+		if (type == JsUndefined || type == JsNull)
+			return nullptr;
+
+		if (type == JsFunction)
 		{
-			auto vv = v8_obj->Get(V8_KeywordString(isolate_, "StaticClass"));
-			if (!vv.IsEmpty())
+			JsPropertyIdRef staticClass = JS_INVALID_REFERENCE;
+			if (JsGetPropertyIdFromName(TEXT("StaticClass"), &staticClass) == JsNoError)
 			{
-				v8_obj = vv->ToObject();
+				JsGetProperty(Value, staticClass, &Value);
 			}
 		}
 
-		if (v8_obj->IsExternal())
+		bool isExternal = false;
+		if (Value != JS_INVALID_REFERENCE && JsHasExternalData(Value, &isExternal) == JsNoError && isExternal)
 		{
-			auto v8_class = Local<External>::Cast(v8_obj);
-
-			UClass* Class{ nullptr };
-			if (!v8_class.IsEmpty())
-			{
-				Class = reinterpret_cast<UClass*>(v8_class->Value());
-			}
+			UClass* Class = nullptr;
+			JsGetExternalData(Value, reinterpret_cast<void**>(&Class));
 
 			return Class;
 		}
@@ -70,40 +72,49 @@ namespace v8
 		return nullptr;
 	}
 
-	Local<String> V8_String(Isolate* isolate, const FString& String)
+	JsValueRef Chakra_String(const FString& String)
 	{
-		return String::NewFromUtf8(isolate, TCHAR_TO_UTF8(*String));
+		JsValueRef stringValue;
+		JsCreateString(TCHAR_TO_UTF8(*String), String.Len(), &stringValue);
+		return stringValue;
 	}
 
-	Local<String> V8_String(Isolate* isolate, const char* String)
+	JsValueRef Chakra_String(const char* String)
 	{
-		return String::NewFromUtf8(isolate, String);
+		JsValueRef stringValue;
+		JsCreateString(String, strlen(String), &stringValue);
+		return stringValue;
 	}
 
-	Local<String> V8_KeywordString(Isolate* isolate, const FString& String)
+	JsValueRef Chakra_KeywordString(const FString& String)
 	{
-		return String::NewFromUtf8(isolate, TCHAR_TO_UTF8(*String), String::kInternalizedString);
+		return Chakra_String(String);
+		//return String::NewFromUtf8(isolate, TCHAR_TO_UTF8(*String), String::kInternalizedString);
 	}
 
-	Local<String> V8_KeywordString(Isolate* isolate, const char* String)
+	JsValueRef Chakra_KeywordString(const char* String)
 	{
-		return String::NewFromUtf8(isolate, String, String::kInternalizedString);
+		return Chakra_String(String);
+		//return String::NewFromUtf8(isolate, String, String::kInternalizedString);
 	}
 
-	FString StringFromV8(Local<Value> Value)
+	FString StringFromChakra(JsValueRef Value)
 	{
-		return UTF8_TO_TCHAR(*String::Utf8Value(Value));
+		const TCHAR* StringPtr = nullptr;
+		size_t Strlen = 0;
+		if (JsStringToPointer(Value, &StringPtr, &Strlen) != JsNoError)
+			return FString();
+
+		return FString(Strlen, StringPtr);
 	}
 
-	FString StringFromArgs(const FunctionCallbackInfo<v8::Value>& args, int StartIndex)
+	FString StringFromArgs(const JsValueRef* args, unsigned int nargs, int StartIndex)
 	{
-		HandleScope handle_scope(args.GetIsolate());
-
 		TArray<FString> ArgStrings;
 
-		for (int Index = StartIndex; Index < args.Length(); Index++)
+		for (unsigned int Index = StartIndex; Index < nargs; Index++)
 		{
-			ArgStrings.Add(StringFromV8(args[Index]));
+			ArgStrings.Add(StringFromChakra(args[Index]));
 		}
 
 		return FString::Join(ArgStrings, TEXT(" "));

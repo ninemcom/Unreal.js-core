@@ -1,6 +1,5 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #if WITH_JSWEBSOCKET
 
@@ -8,6 +7,8 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "JavascriptWebSocketModule.h"
 
 #include "IPAddress.h"
+
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 uint8 PREPADDING_JS[LWS_PRE];
 

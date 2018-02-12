@@ -1,4 +1,3 @@
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #include "Delegates.h"
 #include "V8PCH.h"
@@ -7,17 +6,16 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "JavascriptStats.h"
 #include "UObject/GCObject.h"
 
-using namespace v8;
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 class FJavascriptDelegate : public FGCObject, public TSharedFromThis<FJavascriptDelegate>
 {
 public:
 	FWeakObjectPtr WeakObject;
 	UProperty* Property;
-	Persistent<Context> context_;
-	TMap<int32, UniquePersistent<Function>> functions;
-	Persistent<Object> WrappedObject;
-	Isolate* isolate_;
+	Persistent<JsValueRef> context_;
+	TMap<int32, JsFunctionRef> functions;
+	Persistent<JsValueRef> WrappedObject;
 	int32 NextUniqueId{ 0 };
 	bool bAbandoned{ false };
 
@@ -54,21 +52,22 @@ public:
 		}
 	}
 
-	Local<Object> Initialize(Local<Context> context)
+	JsValueRef Initialize(JsContextRef context)
 	{
-		isolate_ = context->GetIsolate();
-		context_.Reset(isolate_, context);
+		JsValueRef out = JS_INVALID_REFERENCE;
+		JsCreateObject(&out);
 
-		auto out = Object::New(isolate_);
+		JsNativeFunction add = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			FJavascriptDelegate* payload = nullptr;
+			JsGetExternalData(callbackState, (void**)&payload);
 
-		auto add = [](const FunctionCallbackInfo<Value>& info) {
 			for (;;)
 			{
-				auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
-				if (info.Length() == 1)
+				if (argumentCount == 2)
 				{
-					auto func = Local<Function>::Cast(info[0]);
-					if (!func.IsEmpty())
+					JsFunctionRef func = arguments[1];
+					JsValueType Type = JsValueType::JsUndefined;
+					if (JsGetValueType(func, &Type) == JsNoError && Type == JsValueType::JsFunction)
 					{
 						payload->Add(func);
 						break;
@@ -78,16 +77,22 @@ public:
 				UE_LOG(Javascript, Log, TEXT("Invalid argument for delegate"));
 				break;
 			}
+
+			JsValueRef undefined = JS_INVALID_REFERENCE;
+			JsGetUndefinedValue(&undefined);
+			return undefined;
 		};
 
-		auto remove = [](const FunctionCallbackInfo<Value>& info) {
+		auto remove = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			FJavascriptDelegate* payload = nullptr;
+			JsGetExternalData(callbackState, (void**)&payload);
 			for (;;)
 			{
-				auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
-				if (info.Length() == 1)
+				if (argumentCount == 2)
 				{
-					auto func = Local<Function>::Cast(info[0]);
-					if (!func.IsEmpty())
+					JsFunctionRef func = arguments[1];
+					JsValueType Type = JsValueType::JsUndefined;
+					if (JsGetValueType(func, &Type) == JsNoError && Type == JsValueType::JsFunction)
 					{
 						payload->Remove(func);
 						break;
@@ -97,55 +102,81 @@ public:
 				UE_LOG(Javascript, Log, TEXT("Invalid argument for delegate"));
 				break;
 			}
+
+			JsValueRef undefined = JS_INVALID_REFERENCE;
+			JsGetUndefinedValue(&undefined);
+			return undefined;
 		};
 
-		auto clear = [](const FunctionCallbackInfo<Value>& info) {
-			auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
+		auto clear = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			FJavascriptDelegate* payload = nullptr;
+			JsGetExternalData(callbackState, (void**)&payload);
 			payload->Clear();			
+
+			JsValueRef undefined = JS_INVALID_REFERENCE;
+			JsGetUndefinedValue(&undefined);
+			return undefined;
 		};
 
-		auto toJSON = [](const FunctionCallbackInfo<Value>& info) {
-			auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
-
-			uint32_t Index = 0;			
-			auto arr = Array::New(info.GetIsolate(), payload->DelegateObjects.Num());
+		auto toJSON = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			FJavascriptDelegate* payload = nullptr;
+			JsGetExternalData(callbackState, (void**)&payload);
 			const bool bIsMulticastDelegate = payload->Property->IsA(UMulticastDelegateProperty::StaticClass());
+
+			uint32_t Index = 0;
+			JsValueRef arr = JS_INVALID_REFERENCE;
+			JsCreateArray(payload->DelegateObjects.Num(), &arr);
 
 			for (auto DelegateObject : payload->DelegateObjects)
 			{
 				auto JavascriptFunction = payload->functions.Find(DelegateObject->UniqueId);
 				if (JavascriptFunction)
 				{
-					auto function = Local<Function>::New(info.GetIsolate(), *JavascriptFunction);
 					if (!bIsMulticastDelegate)
-					{
-						info.GetReturnValue().Set(function);
-						return;
-					}
+						return *JavascriptFunction;
 					
-					arr->Set(Index++, function);
+					//arr->Set(Index++, function);
+					JsValueRef index = JS_INVALID_REFERENCE;
+					JsIntToNumber(Index++, &index);
+					JsSetIndexedProperty(arr, index, JavascriptFunction);
 				}
 			}
 
 			if (!bIsMulticastDelegate)
 			{
-				info.GetReturnValue().Set(Null(info.GetIsolate()));
+				JsValueRef nullValue = JS_INVALID_REFERENCE;
+				JsGetNullValue(&nullValue);
+				return nullValue;
 			}
-			else
-			{
-				info.GetReturnValue().Set(arr);
-			}			
+
+			return arr;
 		};
 
-		auto data = External::New(isolate_, this);
+		JsPropertyIdRef addProp = JS_INVALID_REFERENCE;
+		JsFunctionRef addFunc = JS_INVALID_REFERENCE;
+		JsCreateFunction(add, this, &addFunc);
+		JsCreatePropertyId("Add", FCStringAnsi::Strlen("Add"), &addProp);
+		JsSetProperty(out, addProp, addFunc, true);
 
-		out->Set(V8_KeywordString(isolate_, "Add"), Function::New(isolate_, add, data));
-		out->Set(V8_KeywordString(isolate_, "Remove"), Function::New(isolate_, remove, data));
-		out->Set(V8_KeywordString(isolate_, "Clear"), Function::New(isolate_, clear, data));
-		out->Set(V8_KeywordString(isolate_, "toJSON"), Function::New(isolate_, toJSON, data));
+		JsPropertyIdRef removeProp = JS_INVALID_REFERENCE;
+		JsFunctionRef removeFunc = JS_INVALID_REFERENCE;
+		JsCreateFunction(remove, this, &removeFunc);
+		JsCreatePropertyId("Remove", FCStringAnsi::Strlen("Remove"), &removeProp);
+		JsSetProperty(out, removeProp, removeFunc, true);
 
-		WrappedObject.Reset(isolate_, out);
+		JsPropertyIdRef clearProp = JS_INVALID_REFERENCE;
+		JsFunctionRef clearFunc = JS_INVALID_REFERENCE;
+		JsCreateFunction(clear, this, &clearFunc);
+		JsCreatePropertyId("Clear", FCStringAnsi::Strlen("Clear"), &clearProp);
+		JsSetProperty(out, clearProp, clearFunc, true);
 
+		JsPropertyIdRef toJSONProp = JS_INVALID_REFERENCE;
+		JsFunctionRef toJSONFunc = JS_INVALID_REFERENCE;
+		JsCreateFunction(toJSON, this, &toJSONFunc);
+		JsCreatePropertyId("toJSON", FCStringAnsi::Strlen("toJSON"), &toJSONProp);
+		JsSetProperty(out, toJSONProp, toJSONFunc, true);
+
+		WrappedObject.Reset(out);
 		return out;
 	}
 
@@ -161,7 +192,7 @@ public:
 		functions.Empty();
 	}
 
-	void Add(Local<Function> function)
+	void Add(JsFunctionRef function)
 	{
 		auto DelegateObject = NewObject<UJavascriptDelegate>();
 
@@ -170,14 +201,14 @@ public:
 		Bind(DelegateObject, function);
 	}
 
-	UJavascriptDelegate* FindJavascriptDelegateByFunction(Local<Function> function)
+	UJavascriptDelegate* FindJavascriptDelegateByFunction(JsFunctionRef function)
 	{
-		HandleScope handle_scope(isolate_);
+		//HandleScope handle_scope(isolate_);
 
 		bool bWasSuccessful = false;
 		for (auto it = functions.CreateIterator(); it; ++it)
 		{
-			if (Local<Function>::New(isolate_, it.Value())->Equals(function))
+			if (it.Value() == function)
 			{
 				for (auto obj : DelegateObjects)
 				{
@@ -192,7 +223,7 @@ public:
 		return nullptr;
 	}
 
-	void Remove(Local<Function> function)
+	void Remove(JsFunctionRef function)
 	{
 		auto obj = FindJavascriptDelegateByFunction(function);
 
@@ -214,7 +245,7 @@ public:
 		}
 	}
 
-	void Bind(UJavascriptDelegate* DelegateObject, Local<Function> function)
+	void Bind(UJavascriptDelegate* DelegateObject, JsFunctionRef function)
 	{
 		static FName NAME_Fire("Fire");
 
@@ -238,7 +269,7 @@ public:
 		DelegateObject->JavascriptDelegate = AsShared();
 		DelegateObjects.Add(DelegateObject);
 
-		functions.Add( DelegateObject->UniqueId, UniquePersistent<Function>(isolate_, function) );
+		functions.Add( DelegateObject->UniqueId, function );
 	}
 
 	void Unbind(UJavascriptDelegate* DelegateObject)
@@ -301,28 +332,25 @@ public:
 		auto it = functions.Find(Delegate->UniqueId);
 		if (WeakObject.IsValid() && it)
 		{
-			Isolate::Scope isolate_scope(isolate_);
-			HandleScope handle_scope(isolate_);
+			//Isolate::Scope isolate_scope(isolate_);
+			//HandleScope handle_scope(isolate_);
 
-			auto func = Local<Function>::New(isolate_, *it);
-			if (!func.IsEmpty())
+			JsFunctionRef func = *it;
+			if (func != JS_INVALID_REFERENCE)
 			{
-				auto context = Local<Context>::New(isolate_, context_);
+				FContextScope Scope(context_.Get());
+				JsValueRef Global = JS_INVALID_REFERENCE;
+				JsGetGlobalObject(&Global);
 
-				Context::Scope context_sopce(context);
-
-				CallJavascriptFunction(context, context->Global(), GetSignatureFunction(), func, Parms);
+				chakra::CallJavascriptFunction(context_.Get(), Global, GetSignatureFunction(), func, Parms);
 			}
 		}
 	}
 };
 
-struct FDelegateManager : IDelegateManager
+struct FDelegateManager : chakra::IDelegateManager
 {
-	Isolate* isolate_;
-
-	FDelegateManager(Isolate* isolate)
-		: isolate_(isolate)
+	FDelegateManager()
 	{}
 
 	virtual ~FDelegateManager()
@@ -354,42 +382,48 @@ struct FDelegateManager : IDelegateManager
 		Delegates.Empty();
 	}
 
-	Local<Object> CreateDelegate(UObject* Object, UProperty* Property)
+	JsValueRef CreateDelegate(JsContextRef Context, UObject* Object, UProperty* Property)
 	{
 		//@HACK
 		CollectGarbageDelegates();
 
 		TSharedPtr<FJavascriptDelegate> payload = MakeShareable(new FJavascriptDelegate(Object, Property));
-		auto created = payload->Initialize(isolate_->GetCurrentContext());
+		auto created = payload->Initialize(Context);
 
 		Delegates.Add(payload);
 
 		return created;
 	}
 
-	virtual Local<Value> GetProxy(Local<Object> This, UObject* Object, UProperty* Property) override
+	virtual JsValueRef GetProxy(JsValueRef This, UObject* Object, UProperty* Property) override
 	{
-		auto cache_id = V8_KeywordString(isolate_, FString::Printf(TEXT("$internal_%s"), *(Property->GetName())));
-		auto cached = This->Get(cache_id);
-		if (cached.IsEmpty() || cached->IsUndefined())
-		{
-			auto created = CreateDelegate(Object, Property);
+		JsValueRef cached = JS_INVALID_REFERENCE;
+		JsPropertyIdRef cachedProp = JS_INVALID_REFERENCE;
+		FTCHARToUTF8 cachedId (*FString::Printf(TEXT("$internal_%s"), *(Property->GetName())));
+		JsCreatePropertyId(cachedId.Get(), cachedId.Length(), &cachedProp);
+		JsGetProperty(This, cachedProp, &cached);
 
-			This->Set(cache_id, created);
+		JsValueType Type = JsValueType::JsUndefined;
+		if (cached == JS_INVALID_REFERENCE || JsGetValueType(This, &Type) != JsNoError || Type == JsUndefined)
+		{
+			JsContextRef Context = JS_INVALID_REFERENCE;
+			JsErrorCode err = JsGetContextOfObject(This, &Context);
+			check(err == JsNoError);
+
+			auto created = CreateDelegate(Context, Object, Property);
+			JsSetProperty(This, cachedProp, created, true);
 			return created;
 		}
-		else
-		{
-			return cached;
-		}
+
+		return cached;
 	}
 };
 
-namespace v8
+namespace chakra
 {
-	IDelegateManager* IDelegateManager::Create(Isolate* isolate)
+	IDelegateManager* IDelegateManager::Create()
 	{
-		return new FDelegateManager(isolate);
+		return new FDelegateManager();
 	}
 }
 

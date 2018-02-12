@@ -21,19 +21,19 @@ struct FNoPropertyOwner : IPropertyOwner
 	}
 };
 
-namespace v8
+namespace chakra
 {
-	Local<Value> ReadProperty(Isolate* isolate, UProperty* Property, uint8* Buffer, const IPropertyOwner& Owner);
-	void WriteProperty(Isolate* isolate, UProperty* Property, uint8* Buffer, Local<Value> value);
-	void ReportException(Isolate* isolate, TryCatch& try_catch);
-	Local<String> V8_String(Isolate* isolate, const FString& String);
-	Local<String> V8_String(Isolate* isolate, const char* String);
-	Local<String> V8_KeywordString(Isolate* isolate, const FString& String);
-	Local<String> V8_KeywordString(Isolate* isolate, const char* String);
-	FString StringFromV8(Local<Value> Value);
-	void CallJavascriptFunction(Handle<Context> context, Handle<Value> This, UFunction* SignatureFunction, Handle<Function> func, void* Parms);
-	UClass* UClassFromV8(Isolate* isolate_, Local<Value> Value);
-	UObject* UObjectFromV8(Local<Value> Value);
-	uint8* RawMemoryFromV8(Local<Value> Value);
-	FString StringFromArgs(const FunctionCallbackInfo<v8::Value>& args, int StartIndex = 0);
+	JsValueRef ReadProperty(UProperty* Property, uint8* Buffer, const IPropertyOwner& Owner);
+	void WriteProperty(UProperty* Property, uint8* Buffer, JsValueRef Value);
+	//void ReportException(Isolate* isolate, TryCatch& try_catch);
+	JsValueRef Chakra_String(const FString& String);
+	JsValueRef Chakra_String(const char* String);
+	JsValueRef Chakra_KeywordString(const FString& String);
+	JsValueRef Chakra_KeywordString(const char* String);
+	FString StringFromChakra(JsValueRef Value);
+	void CallJavascriptFunction(JsContextRef context, JsValueRef This, UFunction* SignatureFunction, JsFunctionRef func, void* Parms);
+	UClass* UClassFromChakra(JsValueRef Value);
+	UObject* UObjectFromChakra(JsValueRef Value);
+	uint8* RawMemoryFromChakra(JsValueRef Value);
+	FString StringFromArgs(const JsValueRef* args, unsigned short nargs, int StartIndex = 0);
 }

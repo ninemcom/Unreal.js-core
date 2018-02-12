@@ -2,12 +2,12 @@
 
 #include "V8PCH.h"
 
-namespace v8
+namespace chakra
 {
 	struct IDelegateManager
 	{
-		static IDelegateManager* Create(Isolate* isolate);
+		static IDelegateManager* Create();
 		virtual void Destroy() = 0;
-		virtual Local<Value> GetProxy(Local<Object> This, UObject* Object, UProperty* Property) = 0;
+		virtual JsValueRef GetProxy(JsValueRef This, UObject* Object, UProperty* Property) = 0;
 	};
 }

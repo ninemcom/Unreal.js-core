@@ -3,47 +3,46 @@
 #include "V8PCH.h"
 #include "Translator.h"
 
+using namespace chakra;
+
 struct FV8Exception
 {
-	static FString Report(v8::TryCatch& try_catch)
+	static FString Report(JsValueRef Exception)
 	{
-		using namespace v8;
+		JsValueRef ExceptionString = JS_INVALID_REFERENCE;
+		JsErrorCode convertErr = JsConvertValueToString(Exception, &ExceptionString);
+		check(convertErr == JsNoError);
 
-		auto exception = StringFromV8(try_catch.Exception());
-		auto message = try_catch.Message();
-		if (message.IsEmpty())
-		{
-			UE_LOG(Javascript, Error, TEXT("%s"), *exception);
-			return *exception;
-		}
-		else
-		{
-			if (!exception.IsEmpty())
-			{
-				auto filename = StringFromV8(message->GetScriptResourceName());
-				auto linenum = message->GetLineNumber();
-				auto line = StringFromV8(message->GetSourceLine());
+		FString exception = StringFromChakra(ExceptionString);
+		UE_LOG(Javascript, Error, TEXT("%s"), *exception);
 
-				UE_LOG(Javascript, Error, TEXT("%s:%d: %s"), *filename, linenum, *exception);
+		return exception;
 
-				auto stack_trace = StringFromV8(try_catch.StackTrace());
-				if (stack_trace.Len() > 0)
-				{
-					TArray<FString> Lines;
-					stack_trace.ParseIntoArrayLines(Lines);
-					for (const auto& line : Lines)
-					{
-						UE_LOG(Javascript, Error, TEXT("%s"), *line);
-					}
+		//if (!exception.IsEmpty())
+		//{
+		//	auto filename = StringFromV8(message->GetScriptResourceName());
+		//	auto linenum = message->GetLineNumber();
+		//	auto line = StringFromV8(message->GetSourceLine());
 
-					return stack_trace;
-				} 
-				else
-				{
-					return *exception;
-				}
-			}
-		}
+		//	UE_LOG(Javascript, Error, TEXT("%s:%d: %s"), *filename, linenum, *exception);
+
+		//	auto stack_trace = StringFromV8(try_catch.StackTrace());
+		//	if (stack_trace.Len() > 0)
+		//	{
+		//		TArray<FString> Lines;
+		//		stack_trace.ParseIntoArrayLines(Lines);
+		//		for (const auto& line : Lines)
+		//		{
+		//			UE_LOG(Javascript, Error, TEXT("%s"), *line);
+		//		}
+
+		//		return stack_trace;
+		//	} 
+		//	else
+		//	{
+		//		return *exception;
+		//	}
+		//}
 
 		return FString();
 	}

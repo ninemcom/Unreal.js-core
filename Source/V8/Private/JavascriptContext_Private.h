@@ -6,16 +6,11 @@ struct FStructMemoryInstance;
 
 struct FJavascriptContext : TSharedFromThis<FJavascriptContext>
 {
-	FJavascriptContext(TSharedPtr<FJavascriptIsolate> InEnvironment) : Environment(InEnvironment) {}
-
-	/** Isolate **/
-	TSharedPtr<FJavascriptIsolate> Environment;
-
 	/** A map from Unreal UObject to V8 Object */
-	TMap< UObject*, v8::UniquePersistent<v8::Value> > ObjectToObjectMap;
+	TMap< UObject*, Persistent<JsValueRef> > ObjectToObjectMap;
 
 	/** A map from Struct buffer to V8 Object */
-	TMap< TSharedPtr<FStructMemoryInstance>, v8::UniquePersistent<v8::Value> > MemoryToObjectMap;
+	TMap< TSharedPtr<FStructMemoryInstance>, Persistent<JsValueRef> > MemoryToObjectMap;
 
 	virtual ~FJavascriptContext() {}
 	virtual void Expose(FString RootName, UObject* Object) = 0;
@@ -37,16 +32,37 @@ struct FJavascriptContext : TSharedFromThis<FJavascriptContext>
 
 	virtual void UncaughtException(const FString& Exception) = 0;
 
-	virtual v8::Isolate* isolate() = 0;
-	virtual v8::Local<v8::Context> context() = 0;
-	virtual v8::Local<v8::Value> ExportObject(UObject* Object, bool bForce = false) = 0;
-	virtual v8::Local<v8::Value> GetProxyFunction(UObject* Object, const TCHAR* Name) = 0;
+	//virtual v8::Isolate* isolate() = 0;
+	virtual JsContextRef context() = 0;
+	virtual JsValueRef ExportObject(UObject* Object, bool bForce = false) = 0;
+	virtual JsValueRef GetProxyFunction(UObject* Object, const TCHAR* Name) = 0;
 
-	static FJavascriptContext* FromV8(v8::Local<v8::Context> Context);
+	static FJavascriptContext* FromChakra(JsContextRef Context);
 
 	static FJavascriptContext* Create(TSharedPtr<FJavascriptIsolate> InEnvironment, TArray<FString>& InPaths);
 
 	virtual void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector) = 0;
 
 	virtual const FObjectInitializer* GetObjectInitializer() = 0;
+
+	virtual JsFunctionRef ExportStruct(UScriptStruct* ScriptStruct) = 0;
+	virtual JsFunctionRef ExportClass(UClass* Class, bool bAutoRegister = true) = 0;
+	virtual void RegisterClass(UClass* Class, JsFunctionRef Template) = 0;
+	virtual JsValueRef GetGlobalTemplate() = 0;
+	virtual JsValueRef ExportStructInstance(UScriptStruct* Struct, uint8* Buffer, const IPropertyOwner& Owner) = 0;
+
+	/** A map from Unreal UClass to V8 Function template */
+	TMap< UClass*, JsFunctionRef > ClassToFunctionTemplateMap;
+
+	/** A map from Unreal UScriptStruct to V8 Function template */
+	TMap< UScriptStruct*, JsFunctionRef > ScriptStructToFunctionTemplateMap;	
+
+	/** BlueprintFunctionLibrary function mapping */
+	TMultiMap< const UStruct*, UFunction*> BlueprintFunctionLibraryMapping;
+
+	TMultiMap< const UStruct*, UFunction*> BlueprintFunctionLibraryFactoryMapping;
+
+	TArray<FPendingClassConstruction> ObjectUnderConstructionStack;
+
+	JsRuntimeHandle runtime_;
 };

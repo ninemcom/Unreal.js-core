@@ -1,4 +1,6 @@
 #pragma once
+#include "UObject/Class.h"
+#include "UObject/UnrealType.h"
 #include "Package.h"
 #include "MetaData.h"
 

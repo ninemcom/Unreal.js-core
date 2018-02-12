@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ModuleInterface.h"
+#include "Modules/ModuleManager.h"
 
 /**
 * Interface for the JavascriptUMG Module.

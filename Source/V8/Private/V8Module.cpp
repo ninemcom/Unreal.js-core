@@ -2,12 +2,18 @@
 
 PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
-#include <libplatform/libplatform.h>
+THIRD_PARTY_INCLUDES_START
+//#include <libplatform/libplatform.h>
+//#include "node_platform.h"
+THIRD_PARTY_INCLUDES_END
+
 #include "JavascriptContext.h"
 #include "IV8.h"
 #include "JavascriptStats.h"
 #include "JavascriptSettings.h"
 #include "Containers/Ticker.h"
+#include "Misc/Paths.h"
+#include "UObject/UObjectIterator.h"
 
 DEFINE_STAT(STAT_V8IdleTask);
 DEFINE_STAT(STAT_JavascriptDelegate);
@@ -29,129 +35,25 @@ DEFINE_STAT(STAT_CodeSpace);
 DEFINE_STAT(STAT_MapSpace);
 DEFINE_STAT(STAT_LoSpace);
 
-using namespace v8;
-
 static float GV8IdleTaskBudget = 1 / 60.0f;
 
 UJavascriptSettings::UJavascriptSettings(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+	// --harmony for ES6 in V8, ChakraCore supports ES6 natively
 	V8Flags = TEXT("--harmony --harmony-shipping --es-staging --expose-gc");
 }
 
 void UJavascriptSettings::Apply() const
 {
-	IV8::Get().SetFlagsFromString(V8Flags);
+	//IV8::Get().SetFlagsFromString(V8Flags);
 }
-
-class FUnrealJSPlatform : public v8::Platform
-{
-private:
-	v8::Platform* platform_;
-	TQueue<v8::IdleTask*> IdleTasks;
-	FTickerDelegate TickDelegate;
-	FDelegateHandle TickHandle;
-	bool bActive{ true };
-
-public:
-	v8::Platform* platform() const
-	{
-		return platform_;
-	}
-	FUnrealJSPlatform() 
-		: platform_(platform::CreateDefaultPlatform(0, platform::IdleTaskSupport::kEnabled))
-	{
-		TickDelegate = FTickerDelegate::CreateRaw(this, &FUnrealJSPlatform::HandleTicker);
-		TickHandle = FTicker::GetCoreTicker().AddTicker(TickDelegate);
-	}
-
-	~FUnrealJSPlatform()
-	{
-		FTicker::GetCoreTicker().RemoveTicker(TickHandle);
-		delete platform_;
-	}
-
-	void Shutdown()
-	{
-		bActive = false;
-		RunIdleTasks(FLT_MAX);
-	}
-	
-	virtual size_t NumberOfAvailableBackgroundThreads() { return platform_->NumberOfAvailableBackgroundThreads(); }
-
-	virtual void CallOnBackgroundThread(Task* task,
-		ExpectedRuntime expected_runtime)
-	{
-		platform_->CallOnBackgroundThread(task, expected_runtime);
-	}
-
-	virtual void CallOnForegroundThread(Isolate* isolate, Task* task)
-	{
-		platform_->CallOnForegroundThread(isolate, task);
-	}
-
-	virtual void CallDelayedOnForegroundThread(Isolate* isolate, Task* task,
-		double delay_in_seconds)
-	{
-		platform_->CallDelayedOnForegroundThread(isolate, task, delay_in_seconds);
-	}
-
-	virtual void CallIdleOnForegroundThread(Isolate* isolate, IdleTask* task) 
-	{
-		IdleTasks.Enqueue(task);
-	}
-
-	virtual bool IdleTasksEnabled(Isolate* isolate) 
-	{
-		return bActive;
-	}
-
-	virtual double MonotonicallyIncreasingTime()
-	{
-		return platform_->MonotonicallyIncreasingTime();
-	}
-#if V8_MAJOR_VERSION > 5
-	v8::TracingController* GetTracingController() override
-	{
-		return platform_->GetTracingController();
-	}
-#endif
-
-	void RunIdleTasks(float Budget)
-	{
-		float Start = FPlatformTime::Seconds();
-		while (!IdleTasks.IsEmpty() && Budget > 0)
-		{
-			v8::IdleTask* Task = nullptr;
-			IdleTasks.Dequeue(Task);
-
-			{
-				SCOPE_CYCLE_COUNTER(STAT_V8IdleTask);
-
-				Task->Run(MonotonicallyIncreasingTime() + Budget);
-			}
-			
-			delete Task;
-			
-			float Now = FPlatformTime::Seconds();
-			float Elapsed = Now - Start;
-			Start = Now;
-			Budget -= Elapsed;
-		}
-	}
-
-	bool HandleTicker(float DeltaTime)
-	{	
-		RunIdleTasks(FMath::Max<float>(0, GV8IdleTaskBudget - DeltaTime));
-		return true;
-	}
-};
 
 class V8Module : public IV8
 {
 public:
 	TArray<FString> Paths;
-	FUnrealJSPlatform platform_;
+	JsRuntimeHandle ChakraRuntime = JS_INVALID_RUNTIME_HANDLE;
 
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override
@@ -167,20 +69,17 @@ public:
 		const UJavascriptSettings& Settings = *GetDefault<UJavascriptSettings>();
 		Settings.Apply();
 
-		V8::InitializeICU();
-		V8::InitializePlatform(&platform_);
-		V8::Initialize();
+		//V8::InitializeICU(nullptr);
+		JsErrorCode createErr = JsCreateRuntime(JsRuntimeAttributeNone, nullptr, &ChakraRuntime);
+		checkf(createErr == JsNoError, TEXT("Failed to create javascript runtime! %d"), (int)createErr);
 
 		FName NAME_JavascriptCmd("JavascriptCmd");
-		GLog->Log(NAME_JavascriptCmd, ELogVerbosity::Log, *FString::Printf(TEXT("Unreal.js started. V8 %d.%d.%d"), V8_MAJOR_VERSION, V8_MINOR_VERSION, V8_BUILD_NUMBER));
+		GLog->Log(NAME_JavascriptCmd, ELogVerbosity::Log, *FString::Printf(TEXT("Unreal.js started. ChakraCore %d.%d.%d"), CHAKRA_CORE_MAJOR_VERSION, CHAKRA_CORE_MINOR_VERSION, CHAKRA_CORE_PATCH_VERSION));
 	}
 
 	virtual void ShutdownModule() override
 	{		
-		platform_.Shutdown();
-
-		V8::Dispose();
-		V8::ShutdownPlatform();
+		JsDisposeRuntime(ChakraRuntime);
 	}
 
 	//@HACK
@@ -309,20 +208,26 @@ public:
 		}
 	}
 
-	virtual void SetFlagsFromString(const FString& V8Flags) override
-	{
-		V8::SetFlagsFromString(TCHAR_TO_ANSI(*V8Flags), strlen(TCHAR_TO_ANSI(*V8Flags)));
-	}
+	// not support in chakracore
+	//virtual void SetFlagsFromString(const FString& V8Flags) override
+	//{
+	//	V8::SetFlagsFromString(TCHAR_TO_ANSI(*V8Flags), strlen(TCHAR_TO_ANSI(*V8Flags)));
+	//}
 
 	virtual void SetIdleTaskBudget(float BudgetInSeconds) override
 	{
 		GV8IdleTaskBudget = BudgetInSeconds;
 	}
 
-	virtual void* GetV8Platform() override
+	virtual void* GetRuntime() override
 	{
-		return platform_.platform();
+		return ChakraRuntime;
 	}
+
+	//virtual void* GetV8Platform() override
+	//{
+	//	return platform_.platform();
+	//}
 };
 
 IMPLEMENT_MODULE(V8Module, V8)

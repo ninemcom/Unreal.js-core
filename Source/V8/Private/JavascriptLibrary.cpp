@@ -1,5 +1,6 @@
 #include "JavascriptLibrary.h"
 #include "V8PCH.h"
+#include "IPAddress.h"
 #include "Engine/DynamicBlueprintBinding.h"
 #include "JavascriptContext.h"
 #include "IV8.h"
@@ -12,6 +13,9 @@
 #include "Modules/ModuleVersion.h"
 #include "Misc/FileHelper.h"
 #include "UObject/MetaData.h"
+#include "UObject/Package.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/Engine.h"
 
 struct FPrivateSocketHandle
 {
@@ -607,11 +611,11 @@ void UJavascriptLibrary::RequestAsyncLoad(const FJavascriptStreamableManager& Ma
 	}, Priority);
 }
 
-void UJavascriptLibrary::V8_SetFlagsFromString(const FString& V8Flags)
-{
-	IV8::Get().SetFlagsFromString(V8Flags);
-}
-
+//void UJavascriptLibrary::V8_SetFlagsFromString(const FString& V8Flags)
+//{
+//	IV8::Get().SetFlagsFromString(V8Flags);
+//}
+//
 void UJavascriptLibrary::V8_SetIdleTaskBudget(float BudgetInSeconds)
 {
 	IV8::Get().SetIdleTaskBudget(BudgetInSeconds);
