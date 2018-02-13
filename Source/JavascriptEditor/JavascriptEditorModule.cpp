@@ -131,8 +131,7 @@ void FJavascriptEditorModule::StartupModule()
 
 		PatchReimportRule();
 
-		auto Isolate = NewObject<UJavascriptIsolate>();
-		auto Context = Isolate->CreateContext();
+		auto Context = NewObject<UJavascriptContext>();
 	
 		JavascriptContext = Context;
 		JavascriptContext->AddToRoot();

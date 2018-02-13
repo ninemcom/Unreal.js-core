@@ -2,7 +2,7 @@
 
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "JavascriptProfile.h"
-#include "JavascriptIsolate.h"
+#include "JavascriptContext.h"
 #include "Engine/StreamableManager.h"
 #include "AI/Navigation/RecastNavMesh.h"
 #include "Model.h"

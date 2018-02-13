@@ -23,8 +23,6 @@ struct FNoPropertyOwner : IPropertyOwner
 
 namespace chakra
 {
-	JsValueRef ReadProperty(UProperty* Property, uint8* Buffer, const IPropertyOwner& Owner);
-	void WriteProperty(UProperty* Property, uint8* Buffer, JsValueRef Value);
 	//void ReportException(Isolate* isolate, TryCatch& try_catch);
 	JsValueRef Chakra_String(const FString& String);
 	JsValueRef Chakra_String(const char* String);

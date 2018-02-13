@@ -1,5 +1,4 @@
 #include "JavascriptComponent.h"
-#include "JavascriptIsolate.h"
 #include "JavascriptContext.h"
 #include "JavascriptStats.h"
 #include "Engine/World.h"
@@ -26,8 +25,7 @@ void UJavascriptComponent::OnRegister()
 	{
 		if (GetWorld() && ((GetWorld()->IsGameWorld() && !GetWorld()->IsPreviewWorld()) || bActiveWithinEditor))
 		{
-			auto Isolate = NewObject<UJavascriptIsolate>();
-			auto Context = Isolate->CreateContext();
+			auto Context = NewObject<UJavascriptContext>();
 
 			JavascriptContext = Context;
 

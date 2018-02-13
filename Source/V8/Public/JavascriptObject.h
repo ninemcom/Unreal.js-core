@@ -1,6 +1,6 @@
 #pragma once
 
-#include "JavascriptIsolate.h"
+#include "JavascriptContext.h"
 #include "JavascriptObject.generated.h"
 
 UCLASS()

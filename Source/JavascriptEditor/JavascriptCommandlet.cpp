@@ -15,8 +15,7 @@ int32 UJavascriptCommandlet::Main(const FString& Params)
 	ParseCommandLine(ParamStr, CmdLineTokens, CmdLineSwitches);	
 
 	{
-		auto JavascriptIsolate = NewObject<UJavascriptIsolate>();
-		auto JavascriptContext = JavascriptIsolate->CreateContext();
+		auto JavascriptContext = NewObject<UJavascriptContext>();
 
 		JavascriptContext->Expose(TEXT("Root"), this);
 				

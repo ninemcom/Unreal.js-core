@@ -72,20 +72,6 @@ namespace chakra
 		return nullptr;
 	}
 
-	JsValueRef Chakra_String(const FString& String)
-	{
-		JsValueRef stringValue;
-		JsCreateString(TCHAR_TO_UTF8(*String), String.Len(), &stringValue);
-		return stringValue;
-	}
-
-	JsValueRef Chakra_String(const char* String)
-	{
-		JsValueRef stringValue;
-		JsCreateString(String, strlen(String), &stringValue);
-		return stringValue;
-	}
-
 	JsValueRef Chakra_KeywordString(const FString& String)
 	{
 		return Chakra_String(String);

@@ -3,6 +3,8 @@
 #include "JavascriptContext.h"
 #include "JavascriptComponent.h"
 #include "Config.h"
+#include "IV8.h"
+#include "Helpers.h"
 #include "Translator.h"
 #include "Exception.h"
 
@@ -11,57 +13,18 @@
 
 DEFINE_LOG_CATEGORY(Javascript);
 
-UJavascriptIsolate::UJavascriptIsolate(const FObjectInitializer& ObjectInitializer)
-: Super(ObjectInitializer)
-{
-	const bool bIsClassDefaultObject = IsTemplate(RF_ClassDefaultObject);
-	if (!bIsClassDefaultObject)
-	{
-		JavascriptIsolate = TSharedPtr<FJavascriptIsolate>(FJavascriptIsolate::Create());
-	}
-}
-
-void UJavascriptIsolate::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
-{
-	UJavascriptIsolate* This = CastChecked<UJavascriptIsolate>(InThis);
-
-	if (This->JavascriptIsolate.IsValid())
-	{
-		Collector.AllowEliminatingReferences(false);
-		
-		This->JavascriptIsolate->AddReferencedObjects(This, Collector);		
-
-		Collector.AllowEliminatingReferences(true);
-	}		
-	
-	Super::AddReferencedObjects(This, Collector);
-}
-
-void UJavascriptIsolate::BeginDestroy()
-{
-	const bool bIsClassDefaultObject = IsTemplate(RF_ClassDefaultObject);
-	if (!bIsClassDefaultObject)
-	{
-		JavascriptIsolate.Reset();
-	}
-
-	Super::BeginDestroy();
-}
-
-UJavascriptContext* UJavascriptIsolate::CreateContext()
-{
-	return NewObject<UJavascriptContext>(this);
-}
-
-void UJavascriptIsolate::GetHeapStatistics(FJavascriptHeapStatistics& Statistics)
+void UJavascriptContext::GetHeapStatistics(FJavascriptHeapStatistics& Statistics)
 {
 	//v8::HeapStatistics stats;
 
-	if (JavascriptIsolate.IsValid())
+	if (JavascriptContext.IsValid())
 	{
+		JsRuntimeHandle runtime = JS_INVALID_RUNTIME_HANDLE;
+		JsCheck(JsGetRuntime(JavascriptContext->context(), &runtime));
+
 		size_t limit = 0, usage = 0;
-		JsGetRuntimeMemoryLimit(JavascriptIsolate->runtime_, &limit);
-		JsGetRuntimeMemoryUsage(JavascriptIsolate->runtime_, &usage);
+		JsGetRuntimeMemoryLimit(runtime, &limit);
+		JsGetRuntimeMemoryUsage(runtime, &usage);
 
 		Statistics.HeapSizeLimit = limit;
 		Statistics.UsedHeapSize = usage;
@@ -84,13 +47,12 @@ UJavascriptContext::UJavascriptContext(const FObjectInitializer& ObjectInitializ
 	const bool bIsClassDefaultObject = IsTemplate(RF_ClassDefaultObject);
 	if (!bIsClassDefaultObject)
 	{
-		auto Isolate = Cast<UJavascriptIsolate>(GetOuter());
-		JavascriptContext = TSharedPtr<FJavascriptContext>(FJavascriptContext::Create(Isolate->JavascriptIsolate,Paths));
+		JavascriptContext = FJavascriptContext::Create(reinterpret_cast<JsRuntimeHandle>(IV8::Get().GetRuntime()), Paths)->AsShared();
 
 		Expose("Context", this);
 
 		SetContextId(GetName());
-	}	
+	}
 }
 
 void UJavascriptContext::SetContextId(FString Name)

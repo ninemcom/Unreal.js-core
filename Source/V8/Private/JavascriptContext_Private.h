@@ -3,6 +3,24 @@
 #include "JavascriptIsolate_Private.h"
 
 struct FStructMemoryInstance;
+struct FJavascriptContext;
+struct IPropertyOwner;
+
+struct FPendingClassConstruction
+{
+	FPendingClassConstruction() {}
+	FPendingClassConstruction(JsValueRef InObject, UClass* InClass)
+		: Object(InObject), Class(InClass)
+	{
+		JsAddRef(InObject, nullptr);
+	}
+
+	Persistent<JsValueRef> Object;
+	UClass* Class;
+	bool bCatched{ false };
+
+	void Finalize(FJavascriptContext* Context, UObject* Object);
+};
 
 struct FJavascriptContext : TSharedFromThis<FJavascriptContext>
 {
@@ -39,7 +57,7 @@ struct FJavascriptContext : TSharedFromThis<FJavascriptContext>
 
 	static FJavascriptContext* FromChakra(JsContextRef Context);
 
-	static FJavascriptContext* Create(TSharedPtr<FJavascriptIsolate> InEnvironment, TArray<FString>& InPaths);
+	static FJavascriptContext* Create(JsRuntimeHandle InRuntime, TArray<FString>& InPaths);
 
 	virtual void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector) = 0;
 

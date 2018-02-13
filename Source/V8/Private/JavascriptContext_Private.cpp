@@ -3,8 +3,10 @@
 #include "JavascriptIsolate.h"
 #include "JavascriptContext.h"
 #include "JavascriptComponent.h"
+#include "JavascriptMemoryObject.h"
 #include "FileManager.h"
 #include "Config.h"
+#include "Delegates.h"
 #include "Translator.h"
 #include "Exception.h"
 #include "IV8.h"
@@ -12,8 +14,14 @@
 #include "Engine/Blueprint.h"
 #include "FileHelper.h"
 #include "Paths.h"
+#include "Ticker.h"
 #include "JavascriptIsolate_Private.h"
 #include "PropertyPortFlags.h"
+#include "UObjectIterator.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "Engine/World.h"
+#include "ScopedArguments.h"
+#include "ScopedTransaction.h"
 
 #if WITH_EDITOR
 #include "TypingGenerator.h"
@@ -35,6 +43,31 @@ static const int kContextEmbedderDataIndex = 1;
 static const int32 MagicNumber = 0x2852abd3;
 static const FString URL_FilePrefix(TEXT("file:///"));
 
+// HACK FOR ACCESS PRIVATE MEMBERS
+class hack_private_key {};
+static UClass* PlaceholderUClass;
+
+template<>
+FObjectInitializer const& FObjectInitializer::SetDefaultSubobjectClass<hack_private_key>(TCHAR const*SubobjectName) const
+{
+	AssertIfSubobjectSetupIsNotAllowed(SubobjectName);
+	ComponentOverrides.Add(SubobjectName, PlaceholderUClass, *this);
+	return *this;
+}
+// END OF HACKING
+
+template <typename CppType>
+struct TStructReader
+{	
+	UScriptStruct* ScriptStruct;
+
+	TStructReader(UScriptStruct* InScriptStruct)
+		: ScriptStruct(InScriptStruct)
+	{}
+
+	bool Read(JsValueRef Value, CppType& Target) const;
+};
+
 static FString LocalPathToURL(FString Path)
 {
 	return URL_FilePrefix + Path.Replace(TEXT("\\"), TEXT("/")).Replace(TEXT(" "), TEXT("%20"));
@@ -52,6 +85,46 @@ static FString URLToLocalPath(FString URL)
 	return URL;
 }
 
+struct FPrivateJavascriptFunction
+{
+	Persistent<JsContextRef> context;
+	Persistent<JsFunctionRef> Function;
+};
+
+struct FPrivateJavascriptRef
+{
+	Persistent<JsValueRef> Object;
+};
+
+static JsValueRef GCurrentContents = JS_INVALID_REFERENCE;
+
+int32 FArrayBufferAccessor::GetSize()
+{
+	if (GCurrentContents == JS_INVALID_REFERENCE)
+		return 0;
+
+	ChakraBytePtr dataPtr = nullptr;
+	unsigned dataSize = 0;
+	JsGetArrayBufferStorage(GCurrentContents, &dataPtr, &dataSize);
+	return dataSize;
+}
+
+void* FArrayBufferAccessor::GetData()
+{
+	if (GCurrentContents == JS_INVALID_REFERENCE)
+		return nullptr;
+
+	ChakraBytePtr dataPtr = nullptr;
+	unsigned dataSize = 0;
+	JsGetArrayBufferStorage(GCurrentContents, &dataPtr, &dataSize);
+	return dataPtr;
+}
+
+void FArrayBufferAccessor::Discard()
+{
+	GCurrentContents = JS_INVALID_REFERENCE;
+}
+
 static TArray<FString> StringArrayFromChakra(JsValueRef InArray)
 {
 	TArray<FString> OutArray;
@@ -66,6 +139,12 @@ static TArray<FString> StringArrayFromChakra(JsValueRef InArray)
 
 	return OutArray;
 };
+
+void FPendingClassConstruction::Finalize(FJavascriptContext* Context, UObject* UnrealObject)
+{
+	static_cast<FJavascriptContextImplementation*>(Context)->RegisterObject(UnrealObject, Object);
+	//Object->SetAlignedPointerInInternalField(0, UnrealObject);
+}
 
 #if WITH_EDITOR
 template <typename Type>
@@ -744,6 +823,18 @@ class FJavascriptContextImplementation : public FJavascriptContext
 
 	TArray<const FObjectInitializer*> ObjectInitializerStack;
 
+	IDelegateManager* Delegates;
+
+	Persistent<JsValueRef> GlobalTemplate;
+
+	// Allocator instance should be set for V8's ArrayBuffer's
+	FMallocArrayBufferAllocator AllocatorInstance;	
+
+	FTickerDelegate TickDelegate;
+	FDelegateHandle TickHandle;
+	TArray<JsValueRef> PromiseTasks;
+
+
 	virtual const FObjectInitializer* GetObjectInitializer() override
 	{
 		return ObjectInitializerStack.Num() ? ObjectInitializerStack.Last(0) : nullptr;
@@ -762,6 +853,138 @@ public:
 	bool IsValid() const { return Magic == MagicNumber; }
 
 public:
+
+	struct FObjectPropertyAccessors
+	{
+		static JsValueRef Get(FJavascriptContext* ctx, JsValueRef self, UProperty* Property)
+		{
+			UObject* Object = chakra::UObjectFromChakra(self);
+
+			if (Object->IsValidLowLevelFast())
+			{
+				FScopeCycleCounterUObject ContextScope(Object);
+				FScopeCycleCounterUObject PropertyScope(Property);				
+				SCOPE_CYCLE_COUNTER(STAT_JavascriptPropertyGet);
+
+				if (auto p = Cast<UMulticastDelegateProperty>(Property))
+				{
+					return static_cast<FJavascriptContextImplementation*>(ctx)->Delegates->GetProxy(self, Object, p);
+				}
+				else if (auto p = Cast<UDelegateProperty>(Property))
+				{
+					return static_cast<FJavascriptContextImplementation*>(ctx)->Delegates->GetProxy(self, Object, p);
+				}
+				else
+				{
+					return ReadProperty(Property, (uint8*)Object, FObjectPropertyOwner(Object));
+				}
+			}
+			else
+			{
+				return chakra::Undefined();
+			}
+		}
+
+		//@TODO : Property-type 'routing' is not necessary!
+		static void Set(FJavascriptContext* ctx, JsValueRef self, UProperty* Property, JsValueRef value)
+		{
+			UObject* Object = chakra::UObjectFromChakra(self);
+
+			// Direct access to delegate
+			auto SetDelegate = [&](JsValueRef proxy) {
+				if (!chakra::IsObject(proxy))
+				{
+					chakra::Throw(TEXT("Set delegate on invalid instance"));
+					return;
+				}
+
+				if (!(chakra::IsFunction(value) || chakra::IsNull(value) || chakra::IsArray(value)))
+				{
+					chakra::Throw(TEXT("Only [function] or null allowed to set delegate"));
+					return;
+				}
+
+				// call clear
+				JsValueRef clear_fn = chakra::GetProperty(proxy, "Clear");
+				JsValueRef returnValue = JS_INVALID_REFERENCE;
+				JsCallFunction(clear_fn, &proxy, 1, &returnValue);
+
+				JsValueRef add_fn = chakra::GetProperty(proxy, "Add");
+
+				// "whole array" can be set
+				if (chakra::IsArray(value))
+				{
+					JsValueRef arr = value;
+					int Length = chakra::Length(arr);
+					for (decltype(Length) Index = 0; Index < Length; ++Index)
+					{						
+						JsValueRef elem = chakra::GetIndex(arr, Index);
+						JsValueRef args[] = { proxy, elem };
+						JsCallFunction(add_fn, args, 2, &returnValue);
+					}
+				}
+				// only one delegate
+				else if (!chakra::IsNull(value))
+				{					
+					JsValueRef args[] = { proxy, value };
+					JsCallFunction(add_fn, args, 2, &returnValue);
+				}
+			};
+
+			if (Object->IsValidLowLevelFast())
+			{
+				FScopeCycleCounterUObject ContextScope(Object);
+				FScopeCycleCounterUObject PropertyScope(Property);
+				SCOPE_CYCLE_COUNTER(STAT_JavascriptPropertySet);
+
+				// Multicast delegate
+				if (auto p = Cast<UMulticastDelegateProperty>(Property))
+				{
+					auto proxy = static_cast<FJavascriptContextImplementation*>(ctx)->Delegates->GetProxy(self, Object, p);
+					SetDelegate(proxy);					
+				}
+				// delegate
+				else if (auto p = Cast<UDelegateProperty>(Property))
+				{
+					auto proxy = static_cast<FJavascriptContextImplementation*>(ctx)->Delegates->GetProxy(self, Object, p);
+					SetDelegate(proxy);
+				}
+				else
+				{
+					WriteProperty(Property, (uint8*)Object, value);
+				}				
+			}
+		}
+	};
+
+	struct FStructPropertyAccessors
+	{
+		static JsValueRef Get(JsValueRef self, UProperty* Property)
+		{
+			auto Instance = FStructMemoryInstance::FromChakra(self);
+			if (Instance)
+			{
+				return ReadProperty(Property, Instance->GetMemory(), FStructMemoryPropertyOwner(Instance));
+			}
+			else
+			{
+				return chakra::Undefined();
+			}
+		}
+
+		static void Set(JsValueRef self, UProperty* Property, JsValueRef value)
+		{
+			auto Instance = FStructMemoryInstance::FromChakra(self);
+			if (Instance)
+			{
+				WriteProperty(Property, Instance->GetMemory(), value);
+			}
+			else
+			{
+				chakra::Throw(TEXT("Null struct"));
+			}
+		}
+	};
 
 	TMap<FString, Persistent<JsValueRef>> Modules;
 	TArray<FString>& Paths;
@@ -811,6 +1034,12 @@ public:
 		}
 	}
 
+	void EnqueuePromiseTask(JsValueRef Task)
+	{
+		JsAddRef(Task, nullptr);
+		PromiseTasks.Add(Task);
+	}
+
 	FJavascriptContextImplementation(JsRuntimeHandle InRuntime, TArray<FString>& InPaths)
 		: Paths(InPaths)
 	{
@@ -818,10 +1047,27 @@ public:
 
 		JsContextRef context = JS_INVALID_REFERENCE;
 		JsCreateContext(InRuntime, &context);
-		//context->SetAlignedPointerInEmbedderData(kContextEmbedderDataIndex, this);
-		// Todo: setup globaltemplate
+		JsSetContextData(context, this);
+
+		// make task queue working
+		JsSetPromiseContinuationCallback([](JsValueRef Task, void* callbackState) {
+			reinterpret_cast<FJavascriptContextImplementation*>(callbackState)->EnqueuePromiseTask(Task);
+		}, this);
 
 		context_.Reset(context);
+
+		// Set our array buffer allocator instance
+		params.array_buffer_allocator = &AllocatorInstance;
+
+		// Bind this instance to newly created V8 isolate
+		RegisterSelf();
+
+		GenerateBlueprintFunctionLibraryMapping();
+
+		InitializeGlobalTemplate();
+
+		TickDelegate = FTickerDelegate::CreateRaw(this, &FJavascriptContextImplementation::HandleTicker);
+		TickHandle = FTicker::GetCoreTicker().AddTicker(TickDelegate);
 
 		ExposeGlobals();
 
@@ -837,6 +1083,11 @@ public:
 		ResetAsDebugContext();
 		DestroyInspector();
 
+		Delegates->Destroy();
+		Delegates = nullptr;
+
+		FTicker::GetCoreTicker().RemoveTicker(TickHandle);
+
 		context_.Reset();
 	}
 
@@ -847,6 +1098,52 @@ public:
 
 		// Release all struct instances
 		MemoryToObjectMap.Empty();
+
+		// Release all exported classes
+		ClassToFunctionTemplateMap.Empty();
+
+		// Release all exported structs(non-class)
+		ScriptStructToFunctionTemplateMap.Empty();
+
+		// Release global template
+		GlobalTemplate.Reset();
+	}
+
+	void InitializeGlobalTemplate()
+	{
+		// Declares isolate/handle scope
+		FContextScope ContextScope(context());
+
+		// Create a new object template
+		JsValueRef ObjectTemplate = JS_INVALID_REFERENCE;
+		JsCreateObject(&ObjectTemplate);
+
+		// Save it into the persistant handle
+		GlobalTemplate.Reset(ObjectTemplate);
+
+		// Export all structs
+		for (TObjectIterator<UScriptStruct> It; It; ++It)
+		{
+			ExportStruct(*It);
+		}						
+
+		// Export all classes
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			ExportClass(*It);
+		}
+
+		// Export all enums
+		for (TObjectIterator<UEnum> It; It; ++It)
+		{
+			ExportEnum(*It);
+		}
+
+		ExportConsole(ObjectTemplate);
+
+		ExportMemory(ObjectTemplate);
+
+		ExportMisc(ObjectTemplate);		
 	}
 
 	void ExposeGlobals()
@@ -863,6 +1160,66 @@ public:
 	void PurgeModules()
 	{
 		Modules.Empty();
+	}
+
+	void GenerateBlueprintFunctionLibraryMapping()
+	{
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			UClass* Class = *It;
+
+			// Blueprint function library only
+			if (Class->IsChildOf(UBlueprintFunctionLibrary::StaticClass()))
+			{
+				// Iterate over all functions
+				for (TFieldIterator<UFunction> FuncIt(Class, EFieldIteratorFlags::ExcludeSuper); FuncIt; ++FuncIt)
+				{
+					auto Function = *FuncIt;
+					TFieldIterator<UProperty> It(Function);
+
+					// It should be a static function 
+					if ((Function->FunctionFlags & FUNC_Static) && It)
+					{
+						// and have first argument to bind with.
+						if ((It->PropertyFlags & (CPF_Parm | CPF_ReturnParm)) == CPF_Parm)
+						{
+							// The first argument should be type of object
+							if (auto p = Cast<UObjectPropertyBase>(*It))
+							{
+								auto TargetClass = p->PropertyClass;
+
+								// GetWorld() may fail and crash, so target class is bound to UWorld
+								if (TargetClass == UObject::StaticClass() && (p->GetName() == TEXT("WorldContextObject") || p->GetName() == TEXT("WorldContext")))
+								{
+									TargetClass = UWorld::StaticClass();
+								}
+
+								BlueprintFunctionLibraryMapping.Add(TargetClass, Function);
+								continue;
+							}
+							else if (auto p = Cast<UStructProperty>(*It))
+							{
+								BlueprintFunctionLibraryMapping.Add(p->Struct, Function);
+								continue;
+							}
+						}
+
+						// Factory function?
+						for (auto It2 = It; It2; ++It2)
+						{
+							if ((It2->PropertyFlags & (CPF_Parm | CPF_ReturnParm)) == (CPF_Parm | CPF_ReturnParm))
+							{
+								if (auto p = Cast<UStructProperty>(*It2))
+								{
+									BlueprintFunctionLibraryFactoryMapping.Add(p->Struct, Function);
+									break;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	void ExportUnrealEngineClasses()
@@ -1662,6 +2019,24 @@ public:
 		});
 	}
 
+	bool HandleTicker(float DeltaTime)
+	{
+		TArray<JsValueRef> tasksCopy(const_cast<const TArray<JsValueRef>&>(PromiseTasks));
+		PromiseTasks.Empty();
+
+		FContextScope scope(context());
+		JsValueRef global = JS_INVALID_REFERENCE, dummy = JS_INVALID_REFERENCE;
+		JsGetGlobalObject(&global);
+
+		for (JsValueRef task : tasksCopy)
+		{
+			JsCallFunction(task, &global, 1, &dummy);
+			JsRelease(task, nullptr);
+		}
+
+		return true;
+	}
+
 	FString GetScriptFileFullPath(const FString& Filename)
 	{
 		for (auto Path : Paths)
@@ -1792,7 +2167,6 @@ public:
 	virtual JsFunctionRef ExportStruct(UScriptStruct* ScriptStruct) = 0;
 	virtual JsFunctionRef ExportClass(UClass* Class, bool bAutoRegister = true) = 0;
 	virtual void RegisterClass(UClass* Class, JsFunctionRef Template) = 0;
-	virtual JsValueRef GetGlobalTemplate() = 0;
 	virtual JsValueRef ExportStructInstance(UScriptStruct* Struct, uint8* Buffer, const IPropertyOwner& Owner) = 0;
 
 
@@ -2107,9 +2481,1965 @@ public:
 			JsCallFunction(func, argv, 2, &returnValue);
 		}
 	}
+
+	JsValueRef InternalReadProperty(UProperty* Property, uint8* Buffer, const IPropertyOwner& Owner)
+	{
+		if (!Buffer)
+		{
+			chakra::Throw(TEXT("Read property from invalid memory"));
+			return chakra::Undefined();
+		}
+
+		if (auto p = Cast<UIntProperty>(Property))
+		{
+			return chakra::Int(p->GetPropertyValue_InContainer(Buffer));
+		}
+		else if (auto p = Cast<UFloatProperty>(Property))
+		{
+			return chakra::Double(p->GetPropertyValue_InContainer(Buffer));
+		}
+		else if (auto p = Cast<UBoolProperty>(Property))
+		{
+            return chakra::Boolean(p->GetPropertyValue_InContainer(Buffer));
+		}
+		else if (auto p = Cast<UNameProperty>(Property))
+		{
+			FName name = p->GetPropertyValue_InContainer(Buffer);
+			return chakra::String(name.ToString());
+		}
+		else if (auto p = Cast<UStrProperty>(Property))
+		{
+			const FString& Data = p->GetPropertyValue_InContainer(Buffer);
+			return chakra::String(Data);
+		}
+		else if (auto p = Cast<UTextProperty>(Property))
+		{
+			const FText& Data = p->GetPropertyValue_InContainer(Buffer);
+			return chakra::String(Data.ToString());
+		}		
+		else if (auto p = Cast<UClassProperty>(Property))
+		{			
+			UClass* Class = Cast<UClass>(p->GetPropertyValue_InContainer(Buffer));
+
+			if (Class)
+			{
+				return ExportClass(Class);
+			}
+			else
+			{
+				return chakra::Null();
+			}
+		}
+		else if (auto p = Cast<UStructProperty>(Property))
+		{
+			if (auto ScriptStruct = Cast<UScriptStruct>(p->Struct))
+			{	
+				return ExportStructInstance(ScriptStruct, p->ContainerPtrToValuePtr<uint8>(Buffer), Owner);
+			}			
+			else
+			{
+				UE_LOG(Javascript, Warning, TEXT("Non ScriptStruct found : %s"), *p->Struct->GetName());
+				
+				return chakra::Undefined();
+			}			
+		}		
+		else if (auto p = Cast<UArrayProperty>(Property))
+		{
+			FScriptArrayHelper_InContainer helper(p, Buffer);
+			auto len = (uint32_t)(helper.Num());
+
+			JsValueRef arr = JS_INVALID_REFERENCE;
+			JsCreateArray(len, &arr);
+
+			auto Inner = p->Inner;
+
+			if (Inner->IsA(UStructProperty::StaticClass()))
+			{
+				uint8* ElementBuffer = (uint8*)FMemory_Alloca(Inner->GetSize());				
+				for (decltype(len) Index = 0; Index < len; ++Index)
+				{
+					Inner->InitializeValue(ElementBuffer);
+					Inner->CopyCompleteValueFromScriptVM(ElementBuffer, helper.GetRawPtr(Index));
+					chakra::SetIndex(arr, Index, ReadProperty(Inner, ElementBuffer, FNoPropertyOwner()));
+					Inner->DestroyValue(ElementBuffer);
+				}
+			}
+			else
+			{
+				for (decltype(len) Index = 0; Index < len; ++Index)
+				{
+					chakra::SetIndex(arr, Index, ReadProperty(Inner, helper.GetRawPtr(Index), Owner));
+				}
+			}
+
+			return arr;
+		}
+		else if (auto p = Cast<UObjectPropertyBase>(Property))
+		{
+			return ExportObject(p->GetObjectPropertyValue_InContainer(Buffer));
+		}				
+		else if (auto p = Cast<UByteProperty>(Property))
+		{
+			auto Value = p->GetPropertyValue_InContainer(Buffer);
+
+			if (p->Enum)
+			{							
+				return chakra::String(p->Enum->GetNameStringByIndex(Value));
+			}			
+			else
+			{
+				return chakra::Int(Value);
+			}
+		}
+		else if (auto p = Cast<UEnumProperty>(Property))
+		{
+			int32 Value = p->GetUnderlyingProperty()->GetSignedIntPropertyValue(p->ContainerPtrToValuePtr<uint8>(Buffer));
+			return chakra::String(p->GetEnum()->GetNameStringByIndex(Value));
+		}
+		else if (auto p = Cast<USetProperty>(Property))
+		{
+			FScriptSetHelper_InContainer SetHelper(p, Buffer);
+
+			int Num = SetHelper.Num();
+			JsValueRef Out = JS_INVALID_REFERENCE;
+			JsCreateArray(Num, &Out);
+
+			for (int Index = 0; Index < Num; ++Index)
+			{
+				auto PairPtr = SetHelper.GetElementPtr(Index);
+
+				chakra::SetIndex(Out, Index, InternalReadProperty(p->ElementProp, SetHelper.GetElementPtr(Index), Owner));
+			}
+
+			return Out;
+		}
+		else if (auto p = Cast<UMapProperty>(Property))
+		{
+			FScriptMapHelper_InContainer MapHelper(p, Buffer);
+
+			JsValueRef Out = JS_INVALID_REFERENCE;
+			JsCreateObject(&Out);
+
+			int Num = MapHelper.Num();
+			for (int Index = 0; Index < Num; ++Index)
+			{
+				uint8* PairPtr = MapHelper.GetPairPtr(Index);
+
+				JsValueRef Key = InternalReadProperty(p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Owner);
+				JsValueRef Value = InternalReadProperty(p->ValueProp, PairPtr, Owner);
+
+				chakra::SetProperty(Out, chakra::StringFromChakra(Key), Value);
+			}
+
+			return Out;
+		}
+		else
+		{
+			return chakra::String("<Unsupported type>");
+		}
+	}
+
+	void ReadOffStruct(JsValueRef v8_obj, UStruct* Struct, uint8* struct_buffer)
+	{
+		SCOPE_CYCLE_COUNTER(STAT_JavascriptReadOffStruct);
+		FScopeCycleCounterUObject StructContext(Struct);
+
+		JsValueRef arr = JS_INVALID_REFERENCE;
+		JsGetOwnPropertyNames(v8_obj, &arr);
+		if (chakra::IsEmpty(arr)) return;
+
+		int len = chakra::Length(arr);
+		
+		for (TFieldIterator<UProperty> PropertyIt(Struct, EFieldIteratorFlags::IncludeSuper); PropertyIt && len; ++PropertyIt)
+		{
+			UProperty* Property = *PropertyIt;
+			FString PropertyName = PropertyNameToString(Property);
+
+			JsValueRef value = chakra::GetProperty(v8_obj, PropertyName);
+
+			if (!chakra::IsEmpty(value) && !chakra::IsUndefined(value))
+			{
+				len--;
+				InternalWriteProperty(Property, struct_buffer, value);
+			}
+		}
+	}	
+
+	void InternalWriteProperty(UProperty* Property, uint8* Buffer, JsValueRef Value)
+	{
+		if (!Buffer)
+		{
+			chakra::Throw(TEXT("Write property on invalid memory"));
+			return;
+		}
+
+		if (chakra::IsEmpty(Value) || chakra::IsUndefined(Value)) return;
+
+		if (auto p = Cast<UIntProperty>(Property))
+		{
+			p->SetPropertyValue_InContainer(Buffer, chakra::IntFrom(Value));
+		}
+		else if (auto p = Cast<UFloatProperty>(Property))
+		{
+			p->SetPropertyValue_InContainer(Buffer, chakra::DoubleFrom(Value));
+		}
+		else if (auto p = Cast<UBoolProperty>(Property))
+		{
+			p->SetPropertyValue_InContainer(Buffer, chakra::BoolFrom(Value));
+		}
+		else if (auto p = Cast<UNameProperty>(Property))
+		{			
+			p->SetPropertyValue_InContainer(Buffer, FName(*chakra::StringFromChakra(Value)));
+		}
+		else if (auto p = Cast<UStrProperty>(Property))
+		{
+			p->SetPropertyValue_InContainer(Buffer, chakra::StringFromChakra(Value));
+		}		
+		else if (auto p = Cast<UTextProperty>(Property))
+		{
+			p->SetPropertyValue_InContainer(Buffer, FText::FromString(chakra::StringFromChakra(Value)));
+		}
+		else if (auto p = Cast<UClassProperty>(Property))
+		{
+			if (chakra::IsString(Value))
+			{
+				FString UString = chakra::StringFromChakra(Value);
+				if (UString == TEXT("null"))
+				{
+					p->SetPropertyValue_InContainer(Buffer, nullptr);
+				}
+				else
+				{
+					auto Object = StaticLoadObject(UObject::StaticClass(), nullptr, *UString);					
+					if (auto Class = Cast<UClass>(Object))
+					{
+						p->SetPropertyValue_InContainer(Buffer, Class);
+					}
+					else if (auto BP = Cast<UBlueprint>(Object))
+					{
+						auto BPGC = BP->GeneratedClass;
+						p->SetPropertyValue_InContainer(Buffer, BPGC);
+					}
+					else
+					{
+						p->SetPropertyValue_InContainer(Buffer, Object);
+					}
+				}
+			}
+			else
+			{
+				p->SetPropertyValue_InContainer(Buffer, chakra::UClassFromChakra(Value));
+			}
+		}
+		else if (auto p = Cast<UStructProperty>(Property))
+		{
+			if (auto ScriptStruct = Cast<UScriptStruct>(p->Struct))
+			{
+				auto Instance = FStructMemoryInstance::FromChakra(Value);
+
+				// If given value is an instance
+				if (Instance)
+				{
+					auto GivenStruct = Instance->Struct;
+
+					// Type-checking needed
+					if (GivenStruct->IsChildOf(ScriptStruct))
+					{
+						p->CopyCompleteValue(p->ContainerPtrToValuePtr<void>(Buffer), Instance->GetMemory());
+					}
+					else
+					{				
+						chakra::Throw(FString::Printf(TEXT("Wrong struct type (given:%s), (expected:%s)"), *GivenStruct->GetName(), *p->Struct->GetName()));
+					}
+				}
+				else if (p->Struct->IsChildOf(FJavascriptFunction::StaticStruct()))
+				{
+					auto struct_buffer = p->ContainerPtrToValuePtr<uint8>(Buffer);
+					FJavascriptFunction func;
+					if (chakra::IsFunction(Value))
+					{
+						JsValueRef jsfunc = Value;
+						func.Handle = MakeShareable(new FPrivateJavascriptFunction);
+						func.Handle->context.Reset(context());
+						func.Handle->Function.Reset(jsfunc);
+					}
+					p->Struct->CopyScriptStruct(struct_buffer, &func);
+				}
+				else if (p->Struct->IsChildOf(FJavascriptRef::StaticStruct()))
+				{
+					auto struct_buffer = p->ContainerPtrToValuePtr<uint8>(Buffer);
+					FJavascriptRef ref;
+
+					if (chakra::IsObject(Value))
+					{
+						JsValueRef jsobj = Value;
+						ref.Handle = MakeShareable(new FPrivateJavascriptRef);
+						ref.Handle->Object.Reset(jsobj);
+					}
+					
+					p->Struct->CopyScriptStruct(struct_buffer, &ref);
+				}
+				// If raw javascript object has been passed,
+				else if (chakra::IsObject(Value))
+				{
+					JsValueRef v8_obj = Value;
+					uint8* struct_buffer = p->ContainerPtrToValuePtr<uint8>(Buffer);
+
+					UScriptStruct* Struct = p->Struct;
+
+					ReadOffStruct(v8_obj, Struct, struct_buffer);
+				}
+				else
+				{
+					if (nullptr == p->Struct->GetOwnerClass())
+						chakra::Throw(FString::Printf(TEXT("Needed struct data : [null] %s"), *p->Struct->GetName()));
+					else
+						chakra::Throw(FString::Printf(TEXT("Needed struct data : %s %s"), *p->Struct->GetOwnerClass()->GetName(), *p->Struct->GetName()));
+				}
+			}
+			else
+			{
+				chakra::Throw(FString::Printf(TEXT("No ScriptStruct found : %s"), *p->Struct->GetName()));
+			}					
+		}
+		else if (auto p = Cast<UArrayProperty>(Property))
+		{
+			if (chakra::IsArray(Value))
+			{
+				JsValueRef arr = Value;
+				int len = chakra::Length(arr);
+
+				FScriptArrayHelper_InContainer helper(p, Buffer);
+
+				// synchronize the length
+				auto CurSize = (uint32_t)helper.Num();
+				if (CurSize < len)
+				{
+					helper.AddValues(len - CurSize);
+				}
+				else if (CurSize > len)
+				{
+					helper.RemoveValues(len, CurSize - len);
+				}
+
+				for (decltype(len) Index = 0; Index < len; ++Index)
+				{
+					WriteProperty(p->Inner, helper.GetRawPtr(Index), chakra::GetIndex(arr, Index));
+				}
+			}
+			else
+			{
+				chakra::Throw(TEXT("Should write into array by passing an array instance"));
+			}
+		}
+		else if (auto p = Cast<UByteProperty>(Property))
+		{
+			if (p->Enum)
+			{
+				FString Str = chakra::StringFromChakra(Value);
+				int EnumValue = p->Enum->GetIndexByName(FName(*Str), EGetByNameFlags::None);
+				if (EnumValue == INDEX_NONE)
+				{
+					chakra::Throw(FString::Printf(TEXT("Enum Text %s for Enum %s failed to resolve to any value"), *Str, *p->Enum->GetName()));
+				}
+				else
+				{
+					p->SetPropertyValue_InContainer(Buffer, EnumValue);
+				}
+			}			
+			else
+			{				
+				p->SetPropertyValue_InContainer(Buffer, chakra::IntFrom(Value));
+			}
+		}
+		else if (auto p = Cast<UEnumProperty>(Property))
+		{
+			FString Str = chakra::StringFromChakra(Value);
+			auto EnumValue = p->GetEnum()->GetIndexByName(FName(*Str), EGetByNameFlags::None);
+			if (EnumValue == INDEX_NONE)
+			{
+				chakra::Throw(FString::Printf(TEXT("Enum Text %s for Enum %s failed to resolve to any value"), *Str, *p->GetName()));
+			}
+			else
+			{
+				uint8* PropData = p->ContainerPtrToValuePtr<uint8>(Buffer);
+				p->GetUnderlyingProperty()->SetIntPropertyValue(PropData, (int64)EnumValue);
+			}
+		}
+		else if (auto p = Cast<UObjectPropertyBase>(Property))
+		{
+			p->SetObjectPropertyValue_InContainer(Buffer, chakra::UObjectFromChakra(Value));
+		}
+		else if (auto p = Cast<USetProperty>(Property))
+		{
+			if (chakra::IsArray(Value))
+			{
+				JsValueRef arr = Value;
+				int len = chakra::Length(arr);
+
+				FScriptSetHelper_InContainer SetHelper(p, Buffer);
+
+				auto Num = SetHelper.Num();
+				for (int Index = 0; Index < Num; ++Index)
+				{
+					const int32 ElementIndex = SetHelper.AddDefaultValue_Invalid_NeedsRehash();
+					uint8* ElementPtr = SetHelper.GetElementPtr(Index);
+					InternalWriteProperty(p->ElementProp, ElementPtr, chakra::GetIndex(arr, Index));
+				}
+
+				SetHelper.Rehash();
+			}
+		}
+		else if (auto p = Cast<UMapProperty>(Property))
+		{
+			if (chakra::IsObject(Value))
+			{
+				FScriptMapHelper_InContainer MapHelper(p, Buffer);
+
+				JsValueRef v = Value;
+				JsValueRef PropertyNames = JS_INVALID_REFERENCE;
+				JsGetOwnPropertyNames(v, &PropertyNames);
+				int Num = chakra::Length(PropertyNames);
+				for (decltype(Num) Index = 0; Index < Num; ++Index) {
+					JsValueRef Key = chakra::GetIndex(PropertyNames, Index);
+					JsValueRef Value = chakra::GetProperty(v, chakra::StringFromChakra(Key));
+
+					int ElementIndex = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
+					MapHelper.Rehash();
+
+					uint8* PairPtr = MapHelper.GetPairPtr(ElementIndex);
+					InternalWriteProperty(p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Key);
+					InternalWriteProperty(p->ValueProp, PairPtr, Value);
+				}
+			}
+		}
+	};
+	
+	virtual JsValueRef GetGlobalTemplate() override
+	{
+		return GlobalTemplate.Get();
+	}
+
+	void ExportConsole(JsValueRef global_templ)
+	{
+		JsValueRef ConsoleTemplate = chakra::FunctionTemplate();
+		JsValueRef ConsolePrototype = chakra::GetPrototype(ConsoleTemplate);
+
+		auto add_fn = [&](const char* name, JsNativeFunction fn) {			
+			chakra::SetProperty(ConsolePrototype, name, chakra::FunctionTemplate(fn));
+		};
+
+		// console.log
+		add_fn("log", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			UE_LOG(Javascript, Log, TEXT("%s"), *chakra::StringFromArgs(arguments, argumentCount, 1));
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		// console.warn
+		add_fn("warn", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			UE_LOG(Javascript, Warning, TEXT("%s"), *chakra::StringFromArgs(arguments, argumentCount, 1));
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		// console.info
+		add_fn("info", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			UE_LOG(Javascript, Display, TEXT("%s"), *chakra::StringFromArgs(arguments, argumentCount, 1));
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		// console.error
+		add_fn("error", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			UE_LOG(Javascript, Error, TEXT("%s"), *chakra::StringFromArgs(arguments, argumentCount, 1));
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		// console.assert
+		add_fn("assert", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			bool to_assert = argumentCount < 2 || !chakra::BoolFrom(arguments[1]);
+			if (to_assert)
+			{
+				auto stack_frame = StackTrace::CurrentStackTrace(info.GetIsolate(), 1, StackTrace::kOverview)->GetFrame(0);
+				auto filename = stack_frame->GetScriptName();
+				auto line_number = stack_frame->GetLineNumber();
+
+				UE_LOG(Javascript, Error, TEXT("Assertion:%s:%d %s"), *chakra::StringFromChakra(filename), line_number, *StringFromArgs(info, 1));
+			}
+
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		// console.void
+		add_fn("void", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		chakra::SetProperty(global_templ, "console", chakra::New(ConsoleTemplate, nullptr, 0));
+	}	
+
+	void ExportMisc(JsValueRef global_templ)
+	{
+		auto fileManagerCwd = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			return chakra::String(IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(L".")); // FPaths::ProjectDir()
+        };
+		chakra::SetProperty(global_templ, "$cwd", chakra::FunctionTemplate(fileManagerCwd));
+
+#if WITH_EDITOR
+		auto exec_editor = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) 
+		{
+			FEditorScriptExecutionGuard Guard;
+
+			if (argumentCount == 2)
+			{
+				JsValueRef function = arguments[1];
+				if (!chakra::IsEmpty(function))
+				{
+					JsValueRef returnValue = JS_INVALID_REFERENCE;
+					JsCallFunction(function, &arguments[0], 1, &returnValue);
+				}				
+			}
+
+			return chakra::Undefined();
+		};
+		chakra::SetProperty(global_templ, "$execEditor", chakra::FunctionTemplate(exec_editor));
+
+		auto exec_transaction = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			if (argumentCount == 3)
+			{
+				FString String = chakra::StringFromChakra(arguments[1]);
+				FScopedTransaction Transaction(FText::FromString(String));
+
+				JsValueRef function = arguments[2];
+				if (!chakra::IsEmpty(function))
+				{
+					JsValueRef returnValue = JS_INVALID_REFERENCE;
+					JsCallFunction(function, &arguments[0], 1, &returnValue);
+				}
+			}
+
+			return chakra::Undefined();
+		};
+		chakra::SetProperty(global_templ, "$exec_transaction", chakra::FunctionTemplate(exec_transaction));
+
+		auto exec_profile = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			if (argumentCount == 3)
+			{
+				for (;;)
+				{
+					JsValueRef function = arguments[2];
+					if (chakra::IsEmpty(function))
+					{
+						break;
+					}
+
+					if (chakra::IsObject(arguments[1]))
+					{
+						UObject* Object = chakra::UObjectFromChakra(arguments[1]);
+						if (Object)
+						{
+							FScopeCycleCounterUObject ContextScope(Object);
+							JsValueRef returnValue = JS_INVALID_REFERENCE;
+							JsCallFunction(function, &arguments[0], 1, &returnValue);
+
+							return returnValue;
+						}
+					}
+
+					JsValueRef returnValue = JS_INVALID_REFERENCE;
+					JsCallFunction(function, &arguments[0], 1, &returnValue);
+					return returnValue;
+				}
+			}
+
+			return chakra::Undefined();
+		};
+		chakra::SetProperty(global_templ, "$profile", chakra::FunctionTemplate(exec_profile));
+#endif
+	}
+
+	void ExportMemory(JsValueRef global_templ)
+	{
+		JsValueRef Template = chakra::FunctionTemplate();
+		JsValueRef Prototype = chakra::GetPrototype(Template);
+
+		auto add_fn = [&](const char* name, JsNativeFunction fn) {
+			chakra::SetProperty(Prototype, name, chakra::FunctionTemplate(fn));
+		};		
+
+		add_fn("access", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			if (argumentCount == 2)
+			{
+				auto Source = Cast<UJavascriptMemoryObject>(chakra::UObjectFromChakra(arguments[1]));
+
+				if (Source)
+				{
+					JsValueRef ab = JS_INVALID_REFERENCE;
+					JsCreateExternalArrayBuffer(Source->GetMemory(), Source->GetSize(), nullptr, nullptr, &ab);
+					chakra::SetProperty(ab, "$source", arguments[1]);
+					return ab;
+				}
+			}
+
+			chakra::Throw(TEXT("memory.fork requires JavascriptMemoryObject"));
+			return chakra::Undefined();
+		});
+
+		add_fn("exec", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			if (argumentCount == 3 && chakra::IsArrayBuffer(arguments[1]) && chakra::IsFunction(arguments[2]))
+			{
+				JsValueRef arr = arguments[1];
+				JsValueRef function = arguments[2];
+
+				GCurrentContents = arr;
+
+				JsValueRef argv[2] = { arguments[0], arr };
+				JsValueRef returnValue = JS_INVALID_REFERENCE;
+				JsCallFunction(function, argv, 2, &returnValue);
+
+				GCurrentContents = JS_INVALID_REFERENCE;
+			}
+			else
+			{
+				GCurrentContents = JS_INVALID_REFERENCE;
+			}
+
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		// memory.bind
+		add_fn("bind", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			UE_LOG(Javascript, Warning, TEXT("memory.bind is deprecated. use memory.exec(ab,fn) instead."));
+
+			if (argumentCount == 2 && chakra::IsArrayBuffer(arguments[1]))
+			{
+				JsValueRef arr = arguments[1];
+
+				GCurrentContents = arr;
+			}
+			else
+			{
+				GCurrentContents = JS_INVALID_REFERENCE;
+			}
+
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		// memory.unbind
+		add_fn("unbind", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			if (argumentCount == 2 && chakra::IsArrayBuffer(arguments[1]))
+			{
+				JsValueRef arr = arguments[1];
+
+				GCurrentContents = JS_INVALID_REFERENCE;
+			}
+			
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		// console.void
+		add_fn("write", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			if (argumentCount == 3)
+			{
+				JsValueRef filename = arguments[1];
+				JsValueRef data = arguments[2];
+
+				FArchive* Ar = IFileManager::Get().CreateFileWriter(*chakra::StringFromChakra(filename), 0);
+				if (Ar)
+				{
+					if (chakra::IsArrayBuffer(data))
+					{
+						ChakraBytePtr dataPtr = nullptr;
+						int dataSize = 0;
+						JsGetArrayBufferStorage(data, &dataPtr, &dataSize);
+
+						Ar->Serialize(dataPtr, dataSize);
+					}
+
+					delete Ar;
+				}
+			}
+			else
+			{
+				chakra::Throw(TEXT("Two arguments needed"));
+			}
+
+			return chakra::GetPrototype(arguments[0]);
+		});
+
+		//add_fn("takeSnapshot", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		//{			
+		//	class FileOutputStream : public OutputStream
+		//	{
+		//	public:
+		//		FileOutputStream(FArchive* ar) : ar_(ar) {}
+
+		//		virtual int GetChunkSize() {
+		//			return 65536;  // big chunks == faster
+		//		}
+
+		//		virtual void EndOfStream() {}
+
+		//		virtual WriteResult WriteAsciiChunk(char* data, int size) {
+		//			ar_->Serialize(data, size);					
+		//			return ar_->IsError() ? kAbort : kContinue;
+		//		}
+
+		//	private:
+		//		FArchive* ar_;
+		//	};
+
+		//	if (info.Length() == 1)
+		//	{
+		//		const HeapSnapshot* const snap = info.GetIsolate()->GetHeapProfiler()->TakeHeapSnapshot();
+		//		FArchive* Ar = IFileManager::Get().CreateFileWriter(*StringFromV8(info[0]), 0);
+		//		if (Ar)
+		//		{
+		//			FileOutputStream stream(Ar);
+		//			snap->Serialize(&stream, HeapSnapshot::kJSON);
+		//			delete Ar;
+		//		}
+
+		//		// Work around a deficiency in the API.  The HeapSnapshot object is const
+		//		// but we cannot call HeapProfiler::DeleteAllHeapSnapshots() because that
+		//		// invalidates _all_ snapshots, including those created by other tools.
+		//		const_cast<HeapSnapshot*>(snap)->Delete();
+		//	}
+		//	else
+		//	{
+		//		I.Throw(TEXT("One argument needed"));
+		//	}
+		//});
+
+		chakra::SetProperty(global_templ, "memory", chakra::New(Template));
+	}
+	
+	template <typename Fn>
+	static JsValueRef CallFunction(JsValueRef self, UFunction* Function, UObject* Object, Fn&& GetArg) 
+	{
+		SCOPE_CYCLE_COUNTER(STAT_JavascriptFunctionCallToEngine);
+
+		// Allocate buffer(param size) in stack
+		uint8* Buffer = (uint8*)FMemory_Alloca(Function->ParmsSize);
+
+		// Arguments should construct and destruct along this scope
+		FScopedArguments scoped_arguments(Function, Buffer);		
+
+		// Does this function return some parameters by reference?
+		bool bHasAnyOutParams = false;
+
+		// Argument index
+		int ArgIndex = 0;
+
+		// Intentionally declares iterator outside for-loop scope
+		TFieldIterator<UProperty> It(Function);
+
+		int32 NumArgs = 0;
+
+		// Iterate over input parameters
+		for (; It && (It->PropertyFlags & (CPF_Parm | CPF_ReturnParm)) == CPF_Parm; ++It)
+		{
+			auto Prop = *It;
+
+			// Get argument from caller
+			auto arg = GetArg(ArgIndex++);
+
+			// Do we have valid argument?
+			if (!arg.IsEmpty() && !arg->IsUndefined())
+			{				
+				WriteProperty(isolate, Prop, Buffer, arg);
+			}							
+
+			// This is 'out ref'!
+			if ((It->PropertyFlags & (CPF_ConstParm | CPF_OutParm)) == CPF_OutParm)
+			{
+				bHasAnyOutParams = true;
+			}
+		}
+
+		NumArgs = ArgIndex;
+
+		// Call regular native function.
+		FScopeCycleCounterUObject ContextScope(Object);
+		FScopeCycleCounterUObject FunctionScope(Function);
+			
+		Object->ProcessEvent(Function, Buffer);
+
+		auto FetchProperty = [&](UProperty* Param, int32 ArgIndex) -> Local<Value> {
+			if (auto p = Cast<UStructProperty>(Param))
+			{
+				// Get argument from caller
+				auto arg = GetArg(ArgIndex);
+
+				// Do we have valid argument?
+				if (!arg.IsEmpty() && !arg->IsUndefined())
+				{
+					auto Instance = FStructMemoryInstance::FromV8(arg);
+					if (Instance)
+					{
+						p->Struct->CopyScriptStruct(Instance->GetMemory(), p->ContainerPtrToValuePtr<uint8>(Buffer));
+
+						return arg;
+					}
+				}
+			}
+
+			return ReadProperty(isolate, Param, Buffer, FNoPropertyOwner());
+		};
+
+		// In case of 'out ref'
+		if (bHasAnyOutParams)
+		{
+			ArgIndex = 0;
+
+			// Allocate an object to pass return values within
+			auto OutParameters = Object::New(isolate);
+
+			// Iterate over parameters again
+			for (TFieldIterator<UProperty> It(Function); It; ++It, ArgIndex++)
+			{
+				UProperty* Param = *It;
+				
+				auto PropertyFlags = Param->GetPropertyFlags();
+
+				// pass return parameter as '$'
+				if (PropertyFlags & CPF_ReturnParm)
+				{
+					// value can be null if isolate is in trouble
+					auto value = FetchProperty(Param, NumArgs);
+					if (!value.IsEmpty())
+					{
+						OutParameters->Set(
+							// "$"
+							I.Keyword("$"),
+							// property value
+							value
+							);
+					}
+				}
+				// rejects 'const T&' and pass 'T&' as its name
+				else if ((PropertyFlags & (CPF_ConstParm | CPF_OutParm)) == CPF_OutParm)
+				{
+					auto value = FetchProperty(Param, ArgIndex);
+					if (!value.IsEmpty())
+					{
+						OutParameters->Set(
+							// parameter name
+							I.Keyword(Param->GetName()),
+							// property value
+							value
+							);
+					}
+				}
+			}
+
+			// We're done
+			return handle_scope.Escape(OutParameters);
+		}
+		else
+		{
+			// Iterate to fill out return parameter (if we have one)
+			for (; It; ++It)
+			{
+				UProperty* Param = *It;
+				if (Param->GetPropertyFlags() & CPF_ReturnParm)
+				{
+					return handle_scope.Escape(FetchProperty(Param, NumArgs));
+				}
+			}
+		}		
+
+		// No return value available
+		return handle_scope.Escape(Undefined(isolate));
+	}
+
+	void ExportFunction(JsValueRef Template, UFunction* FunctionToExport)
+	{
+		// Exposed function body (it doesn't capture anything)
+		auto FunctionBody = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			// arguments[0].prototype is Holder
+			JsValueRef self = chakra::GetPrototype(arguments[0]);
+
+			// Retrieve "FUNCTION"
+			UFunction* Function = reinterpret_cast<UFunction*>(callbackState);
+
+			// Determine 'this'
+			UObject* Object = (Function->FunctionFlags & FUNC_Static) ? Function->GetOwnerClass()->ClassDefaultObject : chakra::UObjectFromChakra(self);
+
+			// Check 'this' is valid
+			if (!Object->IsValidLowLevelFast())
+			{
+				chakra::Throw(FString::Printf(TEXT("Invalid instance for calling a function %s"), *Function->GetName()));
+				return chakra::Undefined();
+			}
+			
+			// Call unreal engine function!
+			return CallFunction(self, Function, Object, [&](int ArgIndex) {
+				// pass an argument if we have
+				if (ArgIndex < argumentCount-1)
+				{
+					return arguments[ArgIndex+1];
+				}
+				// Otherwise, just return undefined.
+				else
+				{
+					return chakra::Undefined();
+				}
+			});
+		};
+
+		FString function_name = FunctionToExport->GetName();
+		JsValueRef function = chakra::FunctionTemplate(FunctionBody, FunctionToExport);
+
+		// In case of static function, you can also call this function by 'Class.Method()'.
+		if (FunctionToExport->FunctionFlags & FUNC_Static)
+		{
+			chakra::SetProperty(Template, function_name, function);
+		}
+
+		// Register the function to prototype template
+		chakra::SetProperty(chakra::GetPrototype(Template), function_name, function);
+	}
+
+	void ExportBlueprintLibraryFunction(JsValueRef Template, UFunction* FunctionToExport)
+	{
+		// Exposed function body (it doesn't capture anything)
+		auto FunctionBody = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			// arguments[0].prototype is Holder
+			JsValueRef self = chakra::GetPrototype(arguments[0]);
+
+			// Retrieve "FUNCTION"
+			UFunction* Function = reinterpret_cast<UFunction*>(callbackState);
+
+			// 'this' should be CDO of owner class
+			UObject* Object = Function->GetOwnerClass()->ClassDefaultObject;
+
+			// Call unreal engine function!
+			return CallFunction(self, Function, Object, [&](int ArgIndex) {
+				// The first argument is bound automatically
+				if (ArgIndex == 0) 
+				{
+					return self;
+				}
+				// The rest arguments are being passed like normal function call.
+				else if (ArgIndex < argumentCount)
+				{
+					return arguments[ArgIndex];
+				}					
+				else
+				{
+					return chakra::Undefined();
+				}
+			});
+		};
+
+		FString function_name = FunctionToExport->GetName();
+		JsValueRef function = chakra::FunctionTemplate(FunctionBody, FunctionToExport);
+		
+		// Register the function to prototype template
+		chakra::SetProperty(Template, function_name, function);
+	}
+
+	void ExportBlueprintLibraryFactoryFunction(JsValueRef Template, UFunction* FunctionToExport)
+	{
+		// Exposed function body (it doesn't capture anything)
+		auto FunctionBody = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			JsValueRef self = chakra::GetPrototype(arguments[0]);
+
+			// Retrieve "FUNCTION"
+			UFunction* Function = reinterpret_cast<UFunction*>(callbackState);
+
+			// 'this' should be CDO of owner class
+			UObject* Object = Function->GetOwnerClass()->ClassDefaultObject;
+
+			// Call unreal engine function!
+			return CallFunction(self, Function, Object, [&](int ArgIndex) {
+				// pass an argument if we have
+				if (ArgIndex < argumentCount-1)
+				{
+					return arguments[ArgIndex+1];
+				}
+				// Otherwise, just return undefined.
+				else
+				{
+					return chakra::Undefined();
+				}
+			});
+		};
+
+		FString function_name = FunctionToExport->GetName();
+		JsValueRef function = chakra::FunctionTemplate(FunctionBody, FunctionToExport);
+
+		// Register the function to prototype template
+		chakra::SetProperty(Template, function_name, function);
+	}
+	
+	template <typename PropertyAccessors>
+	void ExportProperty(JsValueRef Template, UProperty* PropertyToExport, int32 PropertyIndex) 
+	{
+		// Property getter
+		auto Getter = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UProperty* Property = reinterpret_cast<UProperty*>(callbackState);
+			return PropertyAccessors::Get(arguments[0], Property);
+		};
+
+		// Property setter
+		auto Setter = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UProperty* Property = reinterpret_cast<UProperty*>(callbackState);
+			PropertyAccessors::Set(arguments[0], Property, arguments[1]);			
+			return arguments[1];
+		};
+
+		chakra::FPropertyDescriptor desc;
+		desc.Getter = chakra::FunctionTemplate(Getter, PropertyToExport);
+		desc.Setter = chakra::FunctionTemplate(Setter, PropertyToExport);
+		desc.Configurable = false; // don't delete
+		desc.Writable = !FV8Config::IsWriteDisabledProperty(PropertyToExport);
+
+		chakra::SetAccessor(Template, PropertyNameToString(PropertyToExport), desc);
+	}
+
+	void ExportHelperFunctions(UStruct* ClassToExport, JsValueRef Template)
+	{
+		// Bind blue print library!
+		TArray<UFunction*> Functions;
+		BlueprintFunctionLibraryMapping.MultiFind(ClassToExport, Functions);
+
+		for (auto Function : Functions)
+		{
+			ExportBlueprintLibraryFunction(Template, Function);			
+		}
+
+		BlueprintFunctionLibraryFactoryMapping.MultiFind(ClassToExport, Functions);
+		for (auto Function : Functions)
+		{
+			ExportBlueprintLibraryFactoryFunction(Template, Function);
+		}
+	}
+
+	void AddMemberFunction_Class_GetClassObject(JsValueRef Template, UStruct* ClassToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UClass* ClassToExport = reinterpret_cast<UClass*>(callbackState);
+
+			return GetSelf(isolate)->ForceExportObject(ClassToExport);
+		};
+
+		chakra::SetProperty(Template, "GetClassObject", chakra::FunctionTemplate(fn, ClassToExport));
+	}	
+
+	void AddMemberFunction_Class_SetDefaultSubobjectClass(JsValueRef Template, UStruct* ClassToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UClass* ClassToExport = reinterpret_cast<UClass*>(callbackState);
+
+			const FObjectInitializer* ObjectInitializer = this->GetObjectInitializer();
+
+			if (!ObjectInitializer)
+			{
+				chakra::Throw(TEXT("SetDefaultSubobjectClass must be called within ctor"));
+				return chakra::Undefined();
+			}
+
+			if (argumentCount < 2)
+			{
+				chakra::Throw(TEXT("Missing arg"));
+				return chakra::Undefined();
+			}
+
+			UJavascriptGeneratedClass* Class = static_cast<UJavascriptGeneratedClass*>(ObjectInitializer->GetClass());
+			if (!Class->JavascriptContext.IsValid())
+			{
+				chakra::Throw(TEXT("Fatal"));
+				return chakra::Undefined();
+			}
+
+			auto Context = Class->JavascriptContext.Pin();
+			auto Name = chakra::StringFromChakra(arguments[1]);			
+			PlaceholderUClass = ClassToExport;
+			ObjectInitializer->SetDefaultSubobjectClass<hack_private_key>(*Name);
+			PlaceholderUClass = nullptr;
+
+			return chakra::Undefined();
+		};
+
+		chakra::SetProperty(Template, "SetDefaultSubobjectClass", chakra::FunctionTemplate(fn, ClassToExport));
+	}
+
+	void AddMemberFunction_Class_CreateDefaultSubobject(JsValueRef Template, UStruct* ClassToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UClass* ClassToExport = reinterpret_cast<UClass*>(callbackState);
+
+			FObjectInitializer* ObjectInitializer = this->GetObjectInitializer();
+
+			if (!ObjectInitializer)
+			{
+				chakra::Throw(TEXT("CreateDefaultSubobject must be called within ctor"));
+				return chakra::Undefined();
+			}
+
+			if (argumentCount < 2)
+			{
+				chakra::Throw(TEXT("Missing arg"));
+				return chakra::Undefined();
+			}
+			
+			UJavascriptGeneratedClass* Class = static_cast<UJavascriptGeneratedClass*>(ObjectInitializer->GetClass());
+			if (!Class->JavascriptContext.IsValid())
+			{
+				chakra::Throw(TEXT("Fatal"));
+				return chakra::Undefined();
+			}
+
+			auto Context = Class->JavascriptContext.Pin();
+			UClass* ReturnType = ClassToExport;
+			FString Name = chakra::StringFromChakra(arguments[1]);
+			bool bTransient = argumentCount > 2 ? chakra::BoolFrom(arguments[2]) : false;
+			bool bIsRequired = argumentCount > 3 ? chakra::BoolFrom(arguments[3]) : true;
+			bool bIsAbstract = argumentCount > 4 ? chakra::BoolFrom(arguments[4]) : false;
+			auto Object = ObjectInitializer->CreateDefaultSubobject(ObjectInitializer->GetObj(), *Name, ReturnType, ReturnType, bIsRequired, bIsAbstract, bTransient);
+
+			return Context->ExportObject(Object);
+		};
+
+		chakra::SetProperty(Template, "CreateDefaultSubobject", chakra::FunctionTemplate(fn, ClassToExport));
+	}
+
+	void AddMemberFunction_Class_GetDefaultSubobjectByName(JsValueRef Template, UStruct* ClassToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UClass* ClassToExport = reinterpret_cast<UClass*>(callbackState);
+
+			FString Name = chakra::StringFromChakra(arguments[1]);
+
+			return ExportObject(ClassToExport->GetDefaultSubobjectByName(*Name));
+		};
+
+		chakra::SetProperty(Template, "GetDefaultSubobjectByName", chakra::FunctionTemplate(fn, ClassToExport));
+	}
+
+	void AddMemberFunction_Class_GetDefaultObject(JsValueRef Template, UStruct* ClassToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UClass* ClassToExport = reinterpret_cast<UClass*>(callbackState);
+
+			return ExportObject(ClassToExport->GetDefaultObject());
+		};
+
+		chakra::SetProperty(Template, "GetDefaultObject", chakra::FunctionTemplate(fn, ClassToExport));
+	}
+
+	void AddMemberFunction_Class_Find(JsValueRef Template, UClass* ClassToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UClass* ClassToExport = reinterpret_cast<UClass*>(callbackState);
+
+			if (argumentCount == 3 && chakra::IsString(arguments[2]))
+			{
+				UObject* Outer = chakra::UObjectFromChakra(arguments[1]);
+				UObject* obj = StaticFindObject(ClassToExport, Outer ? Outer : ANY_PACKAGE, *chakra::StringFromChakra(arguments[2]));
+				return ExportObject(obj);
+			}
+			else
+			{
+				chakra::Throw(TEXT("Missing resource name to load"));
+				return chakra::Undefined();
+			}
+		};
+
+		chakra::SetProperty(Template, "Find", chakra::FunctionTemplate(fn, ClassToExport));
+	}
+
+	void AddMemberFunction_Class_Load(JsValueRef Template, UClass* ClassToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UClass* ClassToExport = reinterpret_cast<UClass*>(callbackState);
+
+			if (argumentCount == 2 && chakra::IsString(arguments[1]))
+			{
+				UObject* obj = StaticLoadObject(ClassToExport, nullptr, *chakra::StringFromChakra(arguments[1]));
+				return ExportObject(obj);
+			}
+			else
+			{
+				chakra::Throw(TEXT("Missing resource name to load"));
+				return chakra::Undefined();
+			}
+		};
+
+		chakra::SetProperty(Template, "Load", chakra::FunctionTemplate(fn, ClassToExport));
+	}
+
+	JsValueRef C_Operator(UStruct* StructToExport, JsValueRef Value)
+	{
+		auto Instance = FStructMemoryInstance::FromChakra(Value);
+
+		// If given value is an instance
+		if (Instance)
+		{
+			UScriptStruct* GivenStruct = Instance->Struct;
+			if (Instance->Struct->IsChildOf(StructToExport))
+			{
+				return Value;
+			}
+		}
+		else if (auto ScriptStruct = Cast<UScriptStruct>(StructToExport))
+		{
+			if (chakra::IsObject(Value))
+			{
+				JsValueRef v = Value;
+				auto Size = ScriptStruct->GetStructureSize();
+				auto Target = (uint8*)(FMemory_Alloca(Size));
+				FMemory::Memzero(Target, Size);
+				ReadOffStruct(v, ScriptStruct, Target);
+				return ExportStructInstance(ScriptStruct, Target, FNoPropertyOwner());
+			}
+		}
+
+		return chakra::Undefined();
+	}
+
+	void AddMemberFunction_Struct_C(JsValueRef Template, UStruct* StructToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UStruct* StructToExport = reinterpret_cast<UStruct*>(callbackState);
+
+			if (argumentCount == 2)
+			{
+				return this->C_Operator(StructToExport, arguments[1]);
+			}
+		};
+
+		chakra::SetProperty(Template, "C", chakra::FunctionTemplate(fn, StructToExport));
+	}
+
+	void AddMemberFunction_JavascriptRef_get(JsValueRef Template)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			JsValueRef self = arguments[0];
+
+			auto Instance = FStructMemoryInstance::FromChakra(self);
+
+			if (Instance->GetMemory())
+			{
+				FJavascriptRef* Ref = reinterpret_cast<FJavascriptRef*>(Instance->GetMemory());
+				if (Ref->Handle.IsValid())
+				{
+					FPrivateJavascriptRef* Handle = Ref->Handle.Get();
+					return Handle->Object.Get();
+				}
+			}
+
+			return chakra::Undefined();
+		};
+
+		chakra::SetProperty(Template, "get", chakra::FunctionTemplate(fn));
+	}
+
+	void AddMemberFunction_Struct_clone(JsValueRef Template, UStruct* StructToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			JsValueRef self = arguments[0];
+
+			auto Instance = FStructMemoryInstance::FromChakra(self);
+
+			if (Instance->GetMemory())
+			{
+				return this->ExportStructInstance(Instance->Struct, Instance->GetMemory(), FNoPropertyOwner());
+			}
+
+			return chakra::Undefined();
+		};
+
+		chakra::SetProperty(Template, "clone", chakra::FunctionTemplate(fn));
+	}
+
+	template <typename PropertyAccessor>
+	void AddMemberFunction_Struct_toJSON(JsValueRef Template, UStruct* ClassToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UClass* Class = reinterpret_cast<UClass*>(callbackState);
+
+			JsValueRef self = arguments[0];
+			JsValueRef out = JS_INVALID_REFERENCE;
+			JsCreateObject(&out);
+
+			auto Object_toJSON = [&](JsValueRef value)
+			{
+				UObject* Object = chakra::UObjectFromChakra(value);
+				if (Object == nullptr)
+				{
+					return chakra::Null();
+				}
+				else
+				{
+					return chakra::String(Object->GetPathName());
+				}
+			};
+
+			for (TFieldIterator<UProperty> PropertyIt(Class, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+			{
+				UProperty* Property = *PropertyIt;
+
+				if (FV8Config::CanExportProperty(Class, Property))
+				{
+					FString name = PropertyNameToString(Property);
+					JsValueRef value = PropertyAccessor::Get(isolate, self, Property);
+					if (auto p = Cast<UClassProperty>(Property))
+					{
+						UClass* Class = chakra::UClassFromChakra(isolate, value);
+
+						if (Class)
+						{
+							UBlueprintGeneratedClass* BPGC = Cast<UBlueprintGeneratedClass>(Class);
+							if (BPGC)
+							{
+								UBlueprint* BP = Cast<UBlueprint>(BPGC->ClassGeneratedBy);
+								value = chakra::String(BP->GetPathName());
+							}
+							else
+							{
+								value = chakra::String(Class->GetPathName());
+							}
+						}
+						else
+						{
+							value = chakra::String("null");
+						}
+
+						chakra::SetProeprty(out, name, value);
+					}
+					else if (auto p = Cast<UObjectPropertyBase>(Property))
+					{
+						chakra::SetProperty(out, name, Object_toJSON(value));
+					}
+					else if (auto p = Cast<UArrayProperty>(Property))
+					{
+						if (auto q = Cast<UObjectPropertyBase>(p->Inner))
+						{
+							JsValueRef arr = value;
+							int len = chakra::Length(arr);
+							
+							JsValueRef out_arr = JS_INVALID_REFERENCE;
+							JsCreateArray(len, &out_arr);
+							chakra::SetProperty(out, name, out_arr);
+
+							for (decltype(len) Index = 0; Index < len; ++Index)
+							{
+								JsValueRef v = chakra::GetIndex(arr, Index);
+								chakra::SetIndex(out_arr, Index, Object_toJSON(v));
+							}
+						}
+						else
+						{
+							chakra::SetProperty(out, name, value);
+						}
+					}
+					else
+					{
+						chakra::SetProperty(out, name, value);
+					}
+				}
+			}
+
+			return out;
+		};
+
+		JsValueRef templateProto = chakra::GetPrototype(Template);
+		chakra::SetProperty(templateProto, "toJSON", chakra::FunctionTemplate(fn, ClassToExport));
+	}
+
+	template <typename PropertyAccessor>
+	void AddMemberFunction_Struct_RawAccessor(JsValueRef Template, UStruct* ClassToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			UClass* Class = reinterpret_cast<UClass*>(callbackState);
+
+			if (argumentCount != 3 || !chakra::IsFunction(arguments[2])) return;
+
+			const FName PropertyNameToAccess(*chakra::StringFromChakra(arguments[1]));
+			JsValueRef function = arguments[2];
+
+			JsValueRef self = arguments[0];
+			auto Instance = PropertyAccessor::This(self);
+
+			for (TFieldIterator<UProperty> PropertyIt(Class, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+			{
+				UProperty* Property = *PropertyIt;
+
+				if (auto p = Cast<UArrayProperty>(Property))
+				{
+					FScriptArrayHelper_InContainer helper(p, Instance);
+
+					if (FV8Config::CanExportProperty(Class, Property) && MatchPropertyName(Property,PropertyNameToAccess))
+					{
+						JsValueRef argv[2] = { self };
+						JsCreateExternalArrayBuffer(helper.GetRawPtr(), helper.Num(), nullptr, nullptr, &argv[1]);
+
+						JsValueRef returnValue = JS_INVALID_REFERENCE;
+						JsCallFunction(function, argv, 2, &returnValue);
+
+						return returnValue;
+					}
+				}				
+			}
+
+			return chakra::Undefined();
+		};
+
+		JsValueRef templateProto = chakra::GetPrototype(Template);
+		chakra::SetProperty(templateProto, "$memaccess", chakra::FunctionTemplate(fn, ClassToExport));
+	}
+
+	JsValueRef InternalExportClass(UClass* ClassToExport)
+	{
+		auto ConstructorBody = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			UClass* ClassToExport = reinterpret_cast<UClass*>(callbackState);
+
+			if (isConstructCall)
+			{
+				JsValueRef self = arguments[0];
+
+				UObject* Associated = nullptr;
+
+				// Called by system (via ExportObject)
+				if (argumentCount == 2 && chakra::IsExternal(arguments[1]))
+				{
+					JsGetExternalData(arguments[1], reinterpret_cast<void**>(&Associated));
+
+					if (!Associated->IsValidLowLevel())
+					{
+						Associated = nullptr;
+					}
+				}
+
+				// Called by user (via 'new' operator)
+				if (Associated == nullptr)
+				{
+					const bool bIsJavascriptClass =
+						ClassToExport->GetClass()->IsChildOf(UJavascriptGeneratedClass::StaticClass()) ||
+						ClassToExport->GetClass()->IsChildOf(UJavascriptGeneratedClass_Native::StaticClass());
+
+					auto PreCreate = [&]() {
+						if (bIsJavascriptClass)
+						{
+							this->ObjectUnderConstructionStack.Push(FPendingClassConstruction(self, ClassToExport));
+						}
+					};
+
+					// Custom constructors
+					if (ClassToExport->IsChildOf(AActor::StaticClass()))
+					{
+						if (argumentCount == 1)
+						{
+							chakra::Throw(TEXT("Missing world to spawn"));
+							return chakra::Undefined();
+						}
+
+						UWorld* World = Cast<UWorld>(chakra::UObjectFromChakra(arguments[1]));
+						if (!World)
+						{
+							chakra::Throw(TEXT("Missing world to spawn"));
+							return chakra::Undefined();
+						}
+						
+						FVector Location(ForceInitToZero);
+						FRotator Rotation(ForceInitToZero);
+
+						UPackage* CoreUObjectPackage = UObject::StaticClass()->GetOutermost();
+						static UScriptStruct* VectorStruct = FindObjectChecked<UScriptStruct>(CoreUObjectPackage, TEXT("Vector"));
+						static UScriptStruct* RotatorStruct = FindObjectChecked<UScriptStruct>(CoreUObjectPackage, TEXT("Rotator"));
+						static TStructReader<FVector> VectorReader(VectorStruct);
+						static TStructReader<FRotator> RotatorReader(RotatorStruct);
+
+						FActorSpawnParameters SpawnInfo;
+						switch (FMath::Min(3, int(argumentCount))) {
+						case 3:
+							if (!VectorReader.Read(arguments[2], Location)) return;
+							if (argumentCount == 3) break;
+						case 4:
+							if (!RotatorReader.Read(arguments[3], Rotation)) return;
+							if (argumentCount == 4) break;
+						case 5:
+							SpawnInfo.Name = FName(*chakra::StringFromChakra(arguments[4]));
+							if (argumentCount == 5) break;
+						case 6:
+							SpawnInfo.ObjectFlags = RF_Transient | RF_Transactional;
+							break;
+						default:
+							break;
+						}
+
+						PreCreate();
+						Associated = World->SpawnActor(ClassToExport, &Location, &Rotation, SpawnInfo);
+#if WITH_EDITOR
+						if (SpawnInfo.Name != NAME_None)
+							(Cast<AActor>(Associated))->SetActorLabel(chakra::StringFromChakra(arguments[4]));
+#endif
+					}
+					else
+					{
+						UObject* Outer = GetTransientPackage();
+						FName Name = NAME_None;
+						EObjectFlags ObjectFlags = RF_NoFlags;
+
+						if (argumentCount > 1)
+						{
+							if (UObject* value = chakra::UObjectFromChakra(arguments[1]))
+							{
+								Outer = value;
+							}
+							if (argumentCount > 2)
+							{
+								Name = FName(*chakra::StringFromChakra(arguments[2]));
+							}
+							if (argumentCount > 3)
+							{
+								ObjectFlags = (EObjectFlags)(chakra::IntFrom(arguments[3]));
+							}
+						}
+
+						PreCreate(); 
+						Associated = NewObject<UObject>(Outer, ClassToExport, Name, ObjectFlags);
+					}
+
+					if (bIsJavascriptClass)
+					{
+						const auto& Last = this->ObjectUnderConstructionStack.Last();
+
+						bool bSafeToQuit = Last.bCatched;
+
+						this->ObjectUnderConstructionStack.Pop();
+
+						if (bSafeToQuit)
+						{
+							return chakra::Undefined();
+						}
+					}
+
+					if (!Associated)
+					{
+						chakra::Throw(TEXT("Failed to spawn"));
+						return chakra::Undefined();
+					}
+				}
+
+				FPendingClassConstruction(self, ClassToExport).Finalize(this, Associated);
+			}			
+			else
+			{
+				return this->C_Operator(ClassToExport, arguments[1]);
+			}
+		};
+		
+		JsValueRef Template = JS_INVALID_REFERENCE;
+		JsCheck(JsCreateNamedFunction(chakra::String(ClassToExport->GetName()), ConstructorBody, ClassToExport, &Template));
+		//Template->InstanceTemplate()->SetInternalFieldCount(1);
+		//Template->SetClassName(I.Keyword(ClassToExport->GetName()));
+		
+		AddMemberFunction_Struct_C(Template, ClassToExport);
+
+		// load
+		if (!ClassToExport->IsChildOf(AActor::StaticClass()))
+		{
+			AddMemberFunction_Class_Load(Template, ClassToExport);
+		}
+		AddMemberFunction_Class_Find(Template, ClassToExport);
+
+		AddMemberFunction_Class_GetClassObject(Template, ClassToExport);
+		AddMemberFunction_Class_CreateDefaultSubobject(Template, ClassToExport);
+		AddMemberFunction_Class_SetDefaultSubobjectClass(Template, ClassToExport);
+
+		AddMemberFunction_Class_GetDefaultObject(Template, ClassToExport);
+		AddMemberFunction_Class_GetDefaultSubobjectByName(Template, ClassToExport);
+		
+		AddMemberFunction_Struct_toJSON<FObjectPropertyAccessors>(Template, ClassToExport);
+		AddMemberFunction_Struct_RawAccessor<FObjectPropertyAccessors>(Template, ClassToExport);
+
+
+		FString static_class = "StaticClass";
+
+		// access thru Class.prototype.StaticClass
+		JsValueRef templateProto = chakra::GetPrototype(Template);
+		chakra::SetProperty(templateProto, static_class, chakra::External(ClassToExport));
+		chakra::SetProperty(Template, static_class, chakra::External(ClassToExport));
+
+		for (TFieldIterator<UFunction> FuncIt(ClassToExport, EFieldIteratorFlags::ExcludeSuper); FuncIt; ++FuncIt)
+		{
+			UFunction* Function = *FuncIt;
+			if (FV8Config::CanExportFunction(ClassToExport, Function))
+			{
+				ExportFunction(Template, Function);
+			}
+		}		
+
+		int32 PropertyIndex = 0;
+		for (TFieldIterator<UProperty> PropertyIt(ClassToExport, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt, ++PropertyIndex)
+		{
+			UProperty* Property = *PropertyIt;
+			if (FV8Config::CanExportProperty(ClassToExport, Property))
+			{
+				ExportProperty<FObjectPropertyAccessors>(Template, Property, PropertyIndex);
+			}
+		}
+
+		return Template;
+	}	
+
+	JsValueRef InternalExportStruct(UScriptStruct* StructToExport)
+	{
+		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
+		{
+			auto StructToExport = reinterpret_cast<UScriptStruct*>(callbackState);
+
+			if (isConstructCall)
+			{
+				JsValueRef self = arguments[0];
+
+				TSharedPtr<FStructMemoryInstance> Memory;
+
+				if (argumentCount == 3 && chakra::IsExternal(arguments[1]) && chakra::IsExternal(arguments[2]))
+				{
+					IPropertyOwner& Owner = *reinterpret_cast<IPropertyOwner*>(chakra::RawMemoryFromChakra(arguments[2]));
+
+					Memory = FStructMemoryInstance::Create(StructToExport, Owner, chakra::RawMemoryFromChakra(arguments[1]));
+				}
+				else
+				{
+					Memory = FStructMemoryInstance::Create(StructToExport, FNoPropertyOwner());
+				}
+
+				this->RegisterScriptStructInstance(Memory, self);
+
+				//self->SetAlignedPointerInInternalField(0, Memory.Get());
+			}
+			else
+			{
+				return this->C_Operator(StructToExport, arguments[1]);
+			}
+		};
+				
+		JsValueRef Template = JS_INVALID_REFERENCE;
+		JsCheck(JsCreateNamedFunction(chakra::String(StructToExport->GetName()), fn, StructToExport, &Template));
+		//Template->InstanceTemplate()->SetInternalFieldCount(1);
+		//Template->SetClassName(I.Keyword(StructToExport->GetName()));
+
+		AddMemberFunction_Struct_C(Template, StructToExport);
+		AddMemberFunction_Struct_clone(Template, StructToExport);
+		AddMemberFunction_Struct_toJSON<FStructPropertyAccessors>(Template, StructToExport);
+		AddMemberFunction_Struct_RawAccessor<FStructPropertyAccessors>(Template, StructToExport);
+
+		if (StructToExport == FJavascriptRef::StaticStruct())
+		{
+			AddMemberFunction_JavascriptRef_get(Template);
+		}
+
+		FString static_class = "StaticClass";
+
+		// access thru Class.prototype.StaticClass
+		JsValueRef templateProto = chakra::GetPrototype(Template);
+		chakra::SetProperty(templateProto, static_class, chakra::External(StructToExport));
+		chakra::SetProperty(Template, static_class, chakra::External(StructToExport));
+
+		int32 PropertyIndex = 0;
+		for (TFieldIterator<UProperty> PropertyIt(StructToExport, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt, ++PropertyIndex)
+		{
+			UProperty* Property = *PropertyIt;
+			if (FV8Config::CanExportProperty(StructToExport, Property))
+			{
+				ExportProperty<FStructPropertyAccessors>(Template, Property, PropertyIndex);
+			}
+		}
+
+		return Template;
+	}
+	
+	virtual JsValueRef ExportStruct(UScriptStruct* ScriptStruct) override
+	{
+		JsValueRef* ExportedFunctionTemplatePtr = ScriptStructToFunctionTemplateMap.Find(ScriptStruct);
+		if (ExportedFunctionTemplatePtr == nullptr)
+		{				
+			JsValueRef Template = InternalExportStruct(ScriptStruct);
+
+			UScriptStruct* SuperStruct = Cast<UScriptStruct>(ScriptStruct->GetSuperStruct());
+			if (SuperStruct)
+			{
+				chakra::Inherit(Template, ExportStruct(SuperStruct));
+			}				
+
+			ExportHelperFunctions(ScriptStruct, Template);
+
+			RegisterStruct(ScriptStructToFunctionTemplateMap, ScriptStruct, Template);
+
+			return Template;
+		}
+		else
+		{
+			return *ExportedFunctionTemplatePtr;
+		}
+	}
+
+	JsValueRef ExportEnum(UEnum* Enum)
+	{
+		int MaxEnumValue = Enum->GetMaxEnumValue();
+		JsValueRef arr = JS_INVALID_REFERENCE;
+		JsCheck(JsCreateArray(MaxEnumValue, &arr));
+
+		for (decltype(MaxEnumValue) Index = 0; Index < MaxEnumValue; ++Index)
+		{
+			FString name = Enum->GetNameStringByIndex(Index);
+			JsValueRef value = chakra::String(name);
+			chakra::SetIndex(arr, Index, chakra::String(name));
+			chakra::SetProperty(arr, name, value);
+		}
+
+		// public name
+		FString enumName = FV8Config::Safeify(Enum->GetName());
+		chakra::SetProperty(GetGlobalTemplate(), enumName, arr);
+
+		return arr;
+	}
+
+	virtual JsValueRef ExportClass(UClass* Class, bool bAutoRegister) override
+	{
+		JsValueRef* ExportedFunctionTemplatePtr = ClassToFunctionTemplateMap.Find(Class);
+		if (ExportedFunctionTemplatePtr == nullptr)
+		{
+			JsValueRef Template = InternalExportClass(Class);
+
+			UClass* SuperClass = Class->GetSuperClass();
+			if (SuperClass)
+			{
+				chakra::Inherit(Template, ExportClass(SuperClass));
+			}
+
+			ExportHelperFunctions(Class, Template);
+
+			if (bAutoRegister)
+			{
+				RegisterClass(Class, Template);
+			}			
+			
+			return Template;
+		}
+		else
+		{
+			return *ExportedFunctionTemplatePtr;
+		}
+	}
+
+	JsValueRef ExportStructInstance(UScriptStruct* Struct, uint8* Buffer, const IPropertyOwner& Owner)
+	{
+		if (Struct == nullptr || Buffer == nullptr)
+			return chakra::Undefined();
+
+		JsValueRef v8_struct = ExportStruct(Struct);
+		JsValueRef args[] = {
+			chakra::External(Buffer),
+			chakra::External(&Owner)
+		};
+
+		return chakra::New(v8_struct, args, 2);
+	}
+
+	JsValueRef ForceExportObject(UObject* Object)
+	{
+		if (Object == nullptr)
+			return chakra::Undefined();
+
+		auto ObjectPtr = ObjectToObjectMap.Find(Object);
+		if (ObjectPtr == nullptr)
+		{
+			JsValueRef v8_class = ExportClass(Object->GetClass());
+			JsValueRef args[] = { chakra::External(Object) };
+
+			return chakra::New(v8_class, args, 1);
+		}
+		else
+		{
+			return ObjectPtr->Get();
+		}
+	}
+
+	JsValueRef ExportObject(UObject* Object, bool bForce) override
+	{
+		if (bForce)
+			return ForceExportObject(Object);
+
+		if (Object == nullptr)
+			return chakra::Undefined();
+
+		auto ObjectPtr = ObjectToObjectMap.Find(Object);
+		if (ObjectPtr == nullptr)
+		{
+			if (ObjectUnderConstructionStack.Num() > 0)
+			{
+				auto& Last = ObjectUnderConstructionStack.Last();
+				if (!Last.bCatched)
+				{
+					if (!Object->HasAnyFlags(RF_ClassDefaultObject) && Object->IsA(Last.Class))
+					{
+						Last.bCatched = true;
+						Last.Finalize(this, Object);
+						return Last.Object;
+					}
+				}
+			}
+
+			JsValueRef value = JS_INVALID_REFERENCE;
+			
+			if (UClass* Class = Cast<UClass>(Object))
+			{
+				value = ExportClass(Class);
+			}
+			else if (UScriptStruct* Struct = Cast<UScriptStruct>(Object))
+			{
+				value = ExportStruct(Struct);
+			}
+			else
+			{
+				UClass* Class = Object->GetClass();
+				//if (Class->ClassGeneratedBy && Cast<ULevel>(Class->ClassGeneratedBy->GetOuter()))
+				//{
+				//	return Undefined(isolate_);
+				//}
+
+				JsValueRef v8_class = ExportClass(Class);
+				Handle<Value> args[] = { chakra::External(Object) };
+
+				value = chakra::New(v8_class, args, 1);
+			}
+
+			return value;
+		}
+		else
+		{
+			return Local<Value>::New(isolate_, *ObjectPtr);
+		}
+	}
+
+	// For tracking exported entities
+	template <typename U, typename T>
+	void SetWeak(UniquePersistent<U>& Handle, T* GarbageCollectedObject)
+	{		
+		typedef TPair<FJavascriptContext*, T*> WeakData;
+		typedef typename WeakData::KeyType WeakDataKeyInitType;
+		typedef typename WeakData::ValueType WeakDataValueInitType;
+		typedef TPairInitializer<WeakDataKeyInitType, WeakDataValueInitType> InitializerType;
+
+#if V8_MAJOR_VERSION == 5 && V8_MINOR_VERSION < 3
+		Handle.template SetWeak<WeakData>(new WeakData(InitializerType(GetContext(), GarbageCollectedObject)), [](const WeakCallbackData<U, WeakData>& data) {
+			auto Parameter = data.GetParameter();
+
+			auto Context = Parameter->Key;
+			auto Self = static_cast<FJavascriptIsolateImplementation*>(Context->Environment.Get());
+			Self->OnGarbageCollectedByV8(Context,Parameter->Value);
+
+			delete Parameter;
+		});
+#else
+		Handle.template SetWeak<WeakData>(new WeakData(InitializerType(GetContext(), GarbageCollectedObject)), [](const WeakCallbackInfo<WeakData>& data) {
+			auto Parameter = data.GetParameter();
+
+			auto Context = Parameter->Key;
+			auto Self = static_cast<FJavascriptIsolateImplementation*>(Context->Environment.Get());
+			Self->OnGarbageCollectedByV8(Context, Parameter->Value);
+
+			delete Parameter;
+		}, WeakCallbackType::kParameter);
+#endif
+	}
+
+	template <typename StructType>
+	void RegisterStruct(TMap< StructType*, Persistent<JsValueRef> >& TheMap, StructType* Class, JsValueRef Template)
+	{
+		// public name
+		FString name = FV8Config::Safeify(Class->GetName());
+
+		// If we are running in a context, we also register this class to the context directly.
+		JsValueRef global = JS_INVALID_REFERENCE;
+		JsCheck(JsGetGlobalObject(&global));
+		chakra::SetProperty(global, name, Template);
+
+		// Register this class to the global template so that any other contexts which will be created later have this function template.
+		chakra::SetProperty(GetGlobalTemplate(), name, Template);
+
+		// Track this class from v8 gc.
+		auto& result = TheMap.Add(Class, Template);
+		SetWeak(result, Class);
+	}
+
+	virtual void RegisterClass(UClass* Class, JsValueRef Template) override
+	{
+		RegisterStruct(ClassToFunctionTemplateMap, Class, Template);		
+	}
+
+	void RegisterScriptStruct(UScriptStruct* Struct, JsValueRef Template)
+	{
+		RegisterStruct(ScriptStructToFunctionTemplateMap, Struct, Template);		
+	}
+
+	void RegisterObject(UObject* UnrealObject, JsValueRef value)
+	{		
+		auto& result = ObjectToObjectMap.Add(UnrealObject, value);
+		SetWeak(result, UnrealObject);		
+	}				
+
+	void RegisterScriptStructInstance(TSharedPtr<FStructMemoryInstance> MemoryObject, JsValueRef value)
+	{
+		auto& result = MemoryToObjectMap.Add(MemoryObject, value);
+		SetWeak(result, MemoryObject.Get());
+	}
+
+	void OnGarbageCollectedByV8(FStructMemoryInstance* Memory)
+	{
+		// We should keep ourselves clean
+		MemoryToObjectMap.Remove(Memory->AsShared());
+	}
+
+	void OnGarbageCollectedByV8(UObject* Object)
+	{
+		if (UClass* klass = Cast<UClass>(Object))
+		{
+			ClassToFunctionTemplateMap.Remove(klass);
+		}
+
+		ObjectToObjectMap.Remove(Object);		
+	}	
+
+	static FJavascriptContextImplementation* GetSelf()
+	{
+		JsContextRef context = JS_INVALID_REFERENCE;
+		JsCheck(JsGetCurrentContext(&context));
+
+		if (context == JS_INVALID_REFERENCE)
+			return nullptr;
+
+		FJavascriptContextImplementation* jsContext = nullptr;
+		JsCheck(JsGetContextData(context, reinterpret_cast<void**>(&jsContext)));
+
+		return jsContext;
+	}
 };
 
-FJavascriptContext* FJavascriptContext::Create(TSharedPtr<FJavascriptIsolate> InEnvironment, TArray<FString>& InPaths)
+FJavascriptContext* FJavascriptContext::Create(TArray<FString>& InPaths)
 {
 	return new FJavascriptContextImplementation(InEnvironment, InPaths);
 }
@@ -2146,6 +4476,83 @@ inline void FJavascriptContextImplementation::AddReferencedObjects(UObject * InT
 		else
 		{
 			Collector.AddReferencedObject(Struct, InThis);
+		}
+	}
+
+	// All class definitions
+	for (auto It = ClassToFunctionTemplateMap.CreateIterator(); It; ++It)
+	{
+		UClass* Class = It.Key();
+		//UE_LOG(Javascript, Log, TEXT("JavascriptIsolate referencing %s / %s %s (gen by %s %s)"), *(Class->GetOuter()->GetName()), *(Class->GetClass()->GetName()), *(Class->GetName()), Class->ClassGeneratedBy ? *(Class->ClassGeneratedBy->GetClass()->GetName()) : TEXT("none"), Class->ClassGeneratedBy ? *(Class->ClassGeneratedBy->GetName()) : TEXT("none"));
+		Collector.AddReferencedObject(Class, InThis);
+	}
+
+	// All struct definitions
+	for (auto It = ScriptStructToFunctionTemplateMap.CreateIterator(); It; ++It)
+	{
+		Collector.AddReferencedObject(It.Key(), InThis);
+	}
+}
+
+template <typename CppType>
+bool TStructReader<CppType>::Read(FJavascriptContext* ctx, JsValueRef Value, CppType& Target) const
+{
+	auto Instance = FStructMemoryInstance::FromChakra(Value);
+	if (Instance && Instance->Struct == ScriptStruct)
+	{
+		ScriptStruct->CopyScriptStruct(&Target, Instance->GetMemory());
+	}
+	else if (chakra::IsObject(Value))
+	{
+		ctx->ReadOffStruct(Value, ScriptStruct, reinterpret_cast<uint8*>(&Target));
+	}
+	else
+	{
+		chakra::Throw(TEXT("couldn't read struct"));
+		return false;
+	}
+
+	return true;
+}
+
+void FJavascriptFunction::Execute()
+{
+	if (!Handle.IsValid() || chakra::IsEmpty(Handle->Function.Get())) return;
+
+	{
+		FPrivateJavascriptFunction* Handle = this->Handle.Get();
+
+		JsValueRef function = Handle->Function.Get();
+		if (!chakra::IsEmpty(function))
+		{
+			JsContextRef context = Handle->context.Get();
+
+			FContextScope context_scope(context);
+
+			JsValueRef returnValue = JS_INVALID_REFERENCE;
+			JsCheck(JsCallFunction(function, &function, 1, &returnValue));
+		}
+	}
+}
+
+void FJavascriptFunction::Execute(UScriptStruct* Struct, void* Buffer)
+{
+	if (!Handle.IsValid() || Handle->Function.IsEmpty()) return;
+
+	{
+		FPrivateJavascriptFunction* Handle = this->Handle.Get();
+
+		JsValueRef function = Handle->Function.Get();
+		if (!chakra::IsEmpty(function))
+		{
+			JsContextRef context = Handle->context.Get();
+
+			FContextScope context_scope(context);
+
+			JsValueRef arg = FJavascriptContextImplementation::GetSelf()->ExportStructInstance(Struct, (uint8*)Buffer, FNoPropertyOwner());
+			JsValueRef args[] = { function, arg };
+			JsValueRef returnValue = JS_INVALID_REFERENCE;
+			JsCheck(JsCallFunction(function, args, 2, &returnValue));
 		}
 	}
 }
