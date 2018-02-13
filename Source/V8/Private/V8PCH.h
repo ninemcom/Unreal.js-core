@@ -74,7 +74,10 @@ public:
 		Reset(JS_INVALID_REFERENCE);
 	}
 
-	Persistent(const Persistent& other) = delete;
+	Persistent(const Persistent& other) : value_(JS_INVALID_REFERENCE)
+	{
+		Reset(other.value_);
+	}
 
 	T Get() const
 	{

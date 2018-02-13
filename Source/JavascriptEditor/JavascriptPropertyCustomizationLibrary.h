@@ -3,7 +3,7 @@
 #include "PropertyHandle.h"
 #include "DetailWidgetRow.h"
 #include "IDetailPropertyRow.h"
-#include "JavascriptIsolate.h"
+#include "JavascriptContext.h"
 #include "JavascriptUMGLibrary.h"
 #include "JavascriptPropertyCustomizationLibrary.generated.h"
 

@@ -24,8 +24,6 @@ struct FNoPropertyOwner : IPropertyOwner
 namespace chakra
 {
 	//void ReportException(Isolate* isolate, TryCatch& try_catch);
-	JsValueRef Chakra_String(const FString& String);
-	JsValueRef Chakra_String(const char* String);
 	JsValueRef Chakra_KeywordString(const FString& String);
 	JsValueRef Chakra_KeywordString(const char* String);
 	FString StringFromChakra(JsValueRef Value);

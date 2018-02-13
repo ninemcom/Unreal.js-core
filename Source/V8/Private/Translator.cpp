@@ -72,18 +72,6 @@ namespace chakra
 		return nullptr;
 	}
 
-	JsValueRef Chakra_KeywordString(const FString& String)
-	{
-		return Chakra_String(String);
-		//return String::NewFromUtf8(isolate, TCHAR_TO_UTF8(*String), String::kInternalizedString);
-	}
-
-	JsValueRef Chakra_KeywordString(const char* String)
-	{
-		return Chakra_String(String);
-		//return String::NewFromUtf8(isolate, String, String::kInternalizedString);
-	}
-
 	FString StringFromChakra(JsValueRef Value)
 	{
 		const TCHAR* StringPtr = nullptr;
@@ -94,7 +82,7 @@ namespace chakra
 		return FString(Strlen, StringPtr);
 	}
 
-	FString StringFromArgs(const JsValueRef* args, unsigned int nargs, int StartIndex)
+	FString StringFromArgs(const JsValueRef* args, unsigned short nargs, int StartIndex)
 	{
 		TArray<FString> ArgStrings;
 

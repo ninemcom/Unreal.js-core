@@ -12,7 +12,11 @@ struct FPendingClassConstruction
 	FPendingClassConstruction(JsValueRef InObject, UClass* InClass)
 		: Object(InObject), Class(InClass)
 	{
-		JsAddRef(InObject, nullptr);
+	}
+
+	FPendingClassConstruction(const FPendingClassConstruction& Other)
+		: Object(Other.Object.Get()), Class(Other.Class), bCatched(Other.bCatched)
+	{
 	}
 
 	Persistent<JsValueRef> Object;
@@ -54,6 +58,8 @@ struct FJavascriptContext : TSharedFromThis<FJavascriptContext>
 	virtual JsContextRef context() = 0;
 	virtual JsValueRef ExportObject(UObject* Object, bool bForce = false) = 0;
 	virtual JsValueRef GetProxyFunction(UObject* Object, const TCHAR* Name) = 0;
+	virtual JsValueRef ReadProperty(UProperty* Property, uint8* Buffer, const IPropertyOwner& Owner) = 0;
+	virtual void WriteProperty(UProperty* Property, uint8* Buffer, JsValueRef Value) = 0;
 
 	static FJavascriptContext* FromChakra(JsContextRef Context);
 
@@ -70,10 +76,10 @@ struct FJavascriptContext : TSharedFromThis<FJavascriptContext>
 	virtual JsValueRef ExportStructInstance(UScriptStruct* Struct, uint8* Buffer, const IPropertyOwner& Owner) = 0;
 
 	/** A map from Unreal UClass to V8 Function template */
-	TMap< UClass*, JsFunctionRef > ClassToFunctionTemplateMap;
+	TMap< UClass*, Persistent<JsValueRef> > ClassToFunctionTemplateMap;
 
 	/** A map from Unreal UScriptStruct to V8 Function template */
-	TMap< UScriptStruct*, JsFunctionRef > ScriptStructToFunctionTemplateMap;	
+	TMap< UScriptStruct*, Persistent<JsValueRef> > ScriptStructToFunctionTemplateMap;	
 
 	/** BlueprintFunctionLibrary function mapping */
 	TMultiMap< const UStruct*, UFunction*> BlueprintFunctionLibraryMapping;

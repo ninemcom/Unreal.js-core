@@ -10,7 +10,7 @@ do { \
 
 namespace chakra
 {
-	JsValueRef Undefined()
+	FORCEINLINE JsValueRef Undefined()
 	{
 		JsValueRef undefined = JS_INVALID_REFERENCE;
 		JsCheck(JsGetUndefinedValue(&undefined));
@@ -18,7 +18,7 @@ namespace chakra
 		return undefined;
 	}
 
-	JsValueRef Null()
+	FORCEINLINE JsValueRef Null()
 	{
 		JsValueRef null = JS_INVALID_REFERENCE;
 		JsCheck(JsGetNullValue(&null));
@@ -26,7 +26,7 @@ namespace chakra
 		return null;
 	}
 
-	JsValueRef Double(double Value)
+	FORCEINLINE JsValueRef Double(double Value)
 	{
 		JsValueRef dbl = JS_INVALID_REFERENCE;
 		JsCheck(JsDoubleToNumber(Value, &dbl));
@@ -34,7 +34,7 @@ namespace chakra
 		return dbl;
 	}
 
-	JsValueRef Int(int Value)
+	FORCEINLINE JsValueRef Int(int Value)
 	{
 		JsValueRef integer = JS_INVALID_REFERENCE;
 		JsCheck(JsIntToNumber(Value, &integer));
@@ -42,7 +42,7 @@ namespace chakra
 		return integer;
 	}
 
-	JsValueRef Boolean(bool Value)
+	FORCEINLINE JsValueRef Boolean(bool Value)
 	{
 		JsValueRef boolean = JS_INVALID_REFERENCE;
 		JsCheck(JsBoolToBoolean(Value, &boolean));
@@ -66,16 +66,16 @@ namespace chakra
 		return stringValue;
 	}
 
-	void Throw(const FString& InString)
+	FORCEINLINE void Throw(const FString& InString)
 	{
 		JsValueRef stringValue = String(InString);
 		JsCheck(JsSetException(stringValue));
 	}
 
-	FORCEINLINE JsValueRef External(void* Data)
+	FORCEINLINE JsValueRef External(void* Data, JsFinalizeCallback OnDestroy)
 	{
 		JsValueRef externalObj = JS_INVALID_REFERENCE;
-		JsCheck(JsCreateExternalObject(Data, nullptr, &externalObj));
+		JsCheck(JsCreateExternalObject(Data, OnDestroy, &externalObj));
 
 		return externalObj;
 	}
@@ -107,7 +107,7 @@ namespace chakra
 		return Function;
 	}
 
-	JsValueRef New(JsFunctionRef Template, JsValueRef* Argv = nullptr, int Argc = 0)
+	FORCEINLINE JsValueRef New(JsFunctionRef Template, JsValueRef* Argv = nullptr, int Argc = 0)
 	{
 		JsValueRef instance = JS_INVALID_REFERENCE;
 		JsCheck(JsConstructObject(Template, Argv, Argc, &instance));
@@ -115,7 +115,7 @@ namespace chakra
 		return instance;
 	}
 
-	void Inherit(JsFunctionRef Template, JsFunctionRef ParentTemplate)
+	FORCEINLINE void Inherit(JsFunctionRef Template, JsFunctionRef ParentTemplate)
 	{
 		// simple inheritance using prototype
 		// function parent() {}
@@ -134,7 +134,7 @@ namespace chakra
 		JsCheck(JsSetPrototype(Template, New(prototypeClass)));
 	}
 
-	bool IsObject(JsValueRef Value)
+	FORCEINLINE bool IsObject(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
 			return false;
@@ -145,7 +145,7 @@ namespace chakra
 		return Type == JsObject;
 	}
 
-	bool IsArrayBuffer(JsValueRef Value)
+	FORCEINLINE bool IsArrayBuffer(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
 			return false;
@@ -156,7 +156,7 @@ namespace chakra
 		return Type == JsArrayBuffer;
 	}
 
-	bool IsArray(JsValueRef Value)
+	FORCEINLINE bool IsArray(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
 			return false;
@@ -167,7 +167,7 @@ namespace chakra
 		return Type == JsArray;
 	}
 
-	bool IsNumber(JsValueRef Value)
+	FORCEINLINE bool IsNumber(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
 			return false;
@@ -178,7 +178,7 @@ namespace chakra
 		return Type == JsNumber;
 	}
 
-	bool IsString(JsValueRef Value)
+	FORCEINLINE bool IsString(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
 			return false;
@@ -189,12 +189,12 @@ namespace chakra
 		return Type == JsString;
 	}
 
-	bool IsEmpty(JsValueRef Value)
+	FORCEINLINE bool IsEmpty(JsValueRef Value)
 	{
 		return Value == JS_INVALID_REFERENCE;
 	}
 
-	bool IsExternal(JsValueRef Value)
+	FORCEINLINE bool IsExternal(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
 			return false;
@@ -205,7 +205,7 @@ namespace chakra
 		return hasExternal;
 	}
 
-	bool IsFunction(JsValueRef Value)
+	FORCEINLINE bool IsFunction(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
 			return false;
@@ -216,7 +216,7 @@ namespace chakra
 		return Type == JsFunction;
 	}
 
-	bool IsNull(JsValueRef Value)
+	FORCEINLINE bool IsNull(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
 			return false;
@@ -227,7 +227,7 @@ namespace chakra
 		return Type == JsNull;
 	}
 
-	bool IsUndefined(JsValueRef Value)
+	FORCEINLINE bool IsUndefined(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
 			return false;
@@ -238,28 +238,28 @@ namespace chakra
 		return Type == JsUndefined;
 	}
 
-	int IntFrom(JsValueRef Value)
+	FORCEINLINE int IntFrom(JsValueRef Value)
 	{
 		int iValue = 0;
 		JsNumberToInt(Value, &iValue);
 		return iValue;
 	}
 
-	double DoubleFrom(JsValueRef Value)
+	FORCEINLINE double DoubleFrom(JsValueRef Value)
 	{
 		double dValue = 0;
 		JsNumberToDouble(Value, &dValue);
 		return dValue;
 	}
 
-	bool BoolFrom(JsValueRef Value)
+	FORCEINLINE bool BoolFrom(JsValueRef Value)
 	{
 		bool bValue = false;
 		JsBooleanToBool(Value, &bValue);
 		return bValue;
 	}
 
-	bool BoolEvaluate(JsValueRef Value)
+	FORCEINLINE bool BoolEvaluate(JsValueRef Value)
 	{
 		JsValueRef boolConverted = JS_INVALID_REFERENCE;
 		JsCheck(JsConvertValueToBoolean(Value, &boolConverted));
@@ -267,7 +267,7 @@ namespace chakra
 		return BoolFrom(boolConverted);
 	}
 
-	JsValueRef GetProperty(JsValueRef Value, const FString& Name)
+	FORCEINLINE JsValueRef GetProperty(JsValueRef Value, const FString& Name)
 	{
 		JsPropertyIdRef PropID = JS_INVALID_REFERENCE;
 		JsValueRef Property = JS_INVALID_REFERENCE;
@@ -280,7 +280,7 @@ namespace chakra
 		return Property;
 	}
 
-	void SetProperty(JsValueRef Object, const FString Name, JsValueRef Prop)
+	FORCEINLINE void SetProperty(JsValueRef Object, const FString Name, JsValueRef Prop)
 	{
 		JsPropertyIdRef PropID = JS_INVALID_REFERENCE;
 		FTCHARToUTF8 propIDStr(*Name);
@@ -288,7 +288,7 @@ namespace chakra
 		JsCheck(JsSetProperty(Object, PropID, Prop, true));
 	}
 
-	JsValueRef GetPrototype(JsValueRef Value)
+	FORCEINLINE JsValueRef GetPrototype(JsValueRef Value)
 	{
 		JsValueRef prototype = JS_INVALID_REFERENCE;
 		JsCheck(JsGetPrototype(Value, &prototype));
@@ -296,7 +296,7 @@ namespace chakra
 		return prototype;
 	}
 
-	JsValueRef GetIndex(JsValueRef MaybeArray, int index)
+	FORCEINLINE JsValueRef GetIndex(JsValueRef MaybeArray, int index)
 	{
 		JsValueRef elem = JS_INVALID_REFERENCE;
 		JsCheck(JsGetIndexedProperty(MaybeArray, Int(index), &elem));
@@ -304,12 +304,12 @@ namespace chakra
 		return elem;
 	}
 
-	void SetIndex(JsValueRef MaybeArray, int Index, JsValueRef Value)
+	FORCEINLINE void SetIndex(JsValueRef MaybeArray, int Index, JsValueRef Value)
 	{
 		JsCheck(JsSetIndexedProperty(MaybeArray, Int(Index), Value));
 	}
 
-	int Length(JsValueRef MaybeArray)
+	FORCEINLINE int Length(JsValueRef MaybeArray)
 	{
 		if (!IsArray(MaybeArray))
 			return 0;
@@ -320,7 +320,7 @@ namespace chakra
 		return length;
 	}
 
-	struct FPropertyDescriptor
+	FORCEINLINE struct FPropertyDescriptor
 	{
 		JsFunctionRef Getter = JS_INVALID_REFERENCE;
 		JsFunctionRef Setter = JS_INVALID_REFERENCE;
@@ -329,7 +329,7 @@ namespace chakra
 		bool Writable = false;
 	};
 
-	void SetAccessor(JsFunctionRef Template, FString PropertyName, FPropertyDescriptor PropertyDescriptor)
+	FORCEINLINE void SetAccessor(JsFunctionRef Template, FString PropertyName, FPropertyDescriptor PropertyDescriptor)
 	{
 		JsValueRef AccessorDesc = JS_INVALID_REFERENCE;
 		JsCheck(JsCreateObject(&AccessorDesc));
@@ -351,7 +351,7 @@ namespace chakra
 		JsCheck(JsDefineProperty(Prototype, accessibleProp, AccessorDesc, &ret));
 	}
 
-	JsContextRef CurrentContext()
+	FORCEINLINE JsContextRef CurrentContext()
 	{
 		JsContextRef ctx = JS_INVALID_REFERENCE;
 		JsCheck(JsGetCurrentContext(&ctx));

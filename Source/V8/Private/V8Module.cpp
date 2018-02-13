@@ -70,7 +70,7 @@ public:
 		Settings.Apply();
 
 		//V8::InitializeICU(nullptr);
-		JsErrorCode createErr = JsCreateRuntime(JsRuntimeAttributeNone, nullptr, &ChakraRuntime);
+		JsErrorCode createErr = JsCreateRuntime(JsRuntimeAttributeEnableExperimentalFeatures, nullptr, &ChakraRuntime);
 		checkf(createErr == JsNoError, TEXT("Failed to create javascript runtime! %d"), (int)createErr);
 
 		FName NAME_JavascriptCmd("JavascriptCmd");
