@@ -22,15 +22,10 @@ namespace chakra
 		if (Value == JS_INVALID_REFERENCE)
 			return nullptr;
 
-		JsValueType type;
-		if (JsGetValueType(Value, &type) != JsNoError)
-			return nullptr;
-
-		if (type == JsUndefined || type == JsNull || type != JsObject)
-			return nullptr;
-
 		bool hasExternalData;
-		if (JsHasExternalData(Value, &hasExternalData) != JsNoError || !hasExternalData)
+		JsErrorCode err = JsHasExternalData(Value, &hasExternalData);
+		check(err == JsNoError);
+		if (!hasExternalData)
 			return nullptr;
 
 		void* dataPtr = nullptr;

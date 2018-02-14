@@ -1087,17 +1087,6 @@ public:
 			reinterpret_cast<FJavascriptContextImplementation*>(callbackState)->EnqueuePromiseTask(Task);
 		}, this);
 
-		JsModuleRecord toplevelRecord = nullptr;
-		JsCheck(JsInitializeModuleRecord(nullptr, nullptr, &toplevelRecord));
-
-		//JsSetModuleHostInfo(toplevelRecord, JsModuleHostInfoKind::JsModuleHostInfo_FetchImportedModuleCallback, [](JsModuleRecord Importer, JsValueRef ModuleName, JsModuleRecord* OutModule) {
-		//	return JsNoError;
-		//});
-
-		//JsSetModuleHostInfo(toplevelRecord, JsModuleHostInfo_NotifyModuleReadyCallback, [](JsModuleRecord module, JsValueRef exception) {
-		//	return JsNoError;
-		//});
-
 
 		context_.Reset(context);
 
@@ -1195,6 +1184,19 @@ public:
 	{
 		FContextScope context_scope(context());
 
+		JsModuleRecord toplevelRecord = nullptr;
+		JsCheck(JsInitializeModuleRecord(nullptr, nullptr, &toplevelRecord));
+
+		//JsSetModuleHostInfo(toplevelRecord, JsModuleHostInfoKind::JsModuleHostInfo_FetchImportedModuleCallback, [](JsModuleRecord Importer, JsValueRef ModuleName, JsModuleRecord* OutModule) {
+		//	return JsNoError;
+		//});
+
+		//JsSetModuleHostInfo(toplevelRecord, JsModuleHostInfo_NotifyModuleReadyCallback, [](JsModuleRecord module, JsValueRef exception) {
+		//	return JsNoError;
+		//});
+
+
+		CopyGlobalTemplate();
 		ExposeRequire();
 		ExportUnrealEngineClasses();
 		ExportUnrealEngineStructs();
@@ -1696,6 +1698,25 @@ public:
 		JsGetGlobalObject(&global);
 
 		chakra::SetProperty(global, "CreateStruct", chakra::FunctionTemplate(fn, this));
+	}
+
+	void CopyGlobalTemplate()
+	{
+		JsValueRef globalTmpl = GetGlobalTemplate();
+		JsValueRef keys = JS_INVALID_REFERENCE;
+		JsCheck(JsGetOwnPropertyNames(globalTmpl, &keys));
+
+		JsValueRef global = JS_INVALID_REFERENCE;
+		JsCheck(JsGetGlobalObject(&global));
+
+		int len = chakra::Length(keys);
+		for (int i = 0; i < len; i++)
+		{
+			FString key = chakra::StringFromChakra(chakra::GetIndex(keys, i));
+			JsValueRef value = chakra::GetProperty(globalTmpl, key);
+
+			JsCheck(JsSetProperty(global, chakra::PropertyID(key), value, true));
+		}
 	}
 
 	void ExposeRequire()
@@ -3026,7 +3047,7 @@ public:
 			return chakra::GetPrototype(arguments[0]);
 		});
 
-		chakra::SetProperty(global_templ, "console", chakra::New(ConsoleTemplate, nullptr, 0));
+		chakra::SetProperty(global_templ, "console", chakra::New(ConsoleTemplate));
 	}	
 
 	void ExportMisc(JsValueRef global_templ)
@@ -3545,6 +3566,11 @@ public:
 
 		chakra::FPropertyDescriptor desc;
 		desc.Getter = chakra::FunctionTemplate(Getter, PropertyToExport);
+		JsCheck(JsCreateFunction(Getter, PropertyToExport, &desc.Getter));
+
+		JsValueType typ;
+		JsCheck(JsGetValueType(desc.Getter, &typ));
+		check(typ == JsFunction);
 		desc.Setter = chakra::FunctionTemplate(Setter, PropertyToExport);
 		desc.Configurable = false; // don't delete
 		desc.Writable = !FV8Config::IsWriteDisabledProperty(PropertyToExport);
@@ -4306,12 +4332,13 @@ public:
 
 		JsValueRef v8_struct = ExportStruct(Struct);
 		JsValueRef args[] = {
+			chakra::Undefined(),
 			// Track this class from v8 gc.
 			chakra::External(Buffer, &FinalizeScriptStruct),
 			chakra::External((void*)&Owner, nullptr)
 		};
 
-		return chakra::New(v8_struct, args, 2);
+		return chakra::New(v8_struct, args, 3);
 	}
 
 	JsValueRef ForceExportObject(UObject* Object)
@@ -4324,11 +4351,12 @@ public:
 		{
 			JsValueRef v8_class = ExportClass(Object->GetClass());
 			JsValueRef args[] = {
+				chakra::Undefined(),
 				// Track this class from v8 gc.
 				chakra::External(Object, &FinalizeUObject)
 			};
 
-			return chakra::New(v8_class, args, 1);
+			return chakra::New(v8_class, args, 2);
 		}
 		else
 		{
@@ -4380,9 +4408,9 @@ public:
 				//}
 
 				JsValueRef v8_class = ExportClass(Class);
-				JsValueRef args[] = { chakra::External(Object, &FinalizeUObject) };
+				JsValueRef args[] = { chakra::Undefined(), chakra::External(Object, &FinalizeUObject) };
 
-				value = chakra::New(v8_class, args, 1);
+				value = chakra::New(v8_class, args, 2);
 			}
 
 			return value;
@@ -4482,6 +4510,7 @@ FJavascriptContext* FJavascriptContext::Create(JsRuntimeHandle InRuntime, TArray
 
 inline void FJavascriptContextImplementation::AddReferencedObjects(UObject * InThis, FReferenceCollector & Collector)
 {
+	FContextScope scope(context());
 	RequestV8GarbageCollection();
 
 	// All objects
