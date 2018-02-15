@@ -275,20 +275,6 @@ namespace chakra
 		return BoolFrom(boolConverted);
 	}
 
-	static JsValueRef GetProperty(JsValueRef Value, const FString& Name)
-	{
-		JsPropertyIdRef PropID = JS_INVALID_REFERENCE;
-		JsValueRef Property = JS_INVALID_REFERENCE;
-		JsErrorCode err = JsGetPropertyIdFromName(*Name, &PropID);
-		check(err == JsNoError);
-		if (err != JsNoError)
-			return JS_INVALID_REFERENCE;
-
-		JsCheck(JsGetProperty(Value, PropID, &Property));
-
-		return Property;
-	}
-
 	static JsPropertyIdRef PropertyID(const char* ID)
 	{
 		JsPropertyIdRef PropID = JS_INVALID_REFERENCE;
@@ -304,6 +290,14 @@ namespace chakra
 		JsCheck(JsCreatePropertyId(propIDStr.Get(), propIDStr.Length(), &PropID));
 
 		return PropID;
+	}
+
+	static JsValueRef GetProperty(JsValueRef Value, const FString& Name)
+	{
+		JsValueRef Property = JS_INVALID_REFERENCE;
+		JsCheck(JsGetProperty(Value, PropertyID(Name), &Property));
+
+		return Property;
 	}
 
 	static void SetProperty(JsValueRef Object, const FString& Name, JsValueRef Prop)

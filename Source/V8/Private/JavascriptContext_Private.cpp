@@ -2189,7 +2189,13 @@ public:
 		JsValueRef source = chakra::String(Script);
 		JsValueRef path = chakra::String(LocalPathToURL(Path));
 		JsValueRef returnValue = JS_INVALID_REFERENCE;
-		JsErrorCode err = JsRunScript(*Script, 0, *LocalPathToURL(Path), &returnValue);
+
+		// Use FString script directly
+		JsValueRef script = JS_INVALID_REFERENCE;
+		TArray<TCHAR> scriptData = Script.GetCharArray();
+		JsCreateExternalArrayBuffer(scriptData.GetData(), scriptData.Num() * scriptData.GetTypeSize(), nullptr, nullptr, &script);
+
+		JsErrorCode err = JsRun(script, 0, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributeArrayBufferIsUtf16Encoded, &returnValue);
 		if (err == JsNoError)
 			return returnValue;
 

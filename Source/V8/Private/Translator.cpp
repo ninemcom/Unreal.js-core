@@ -64,10 +64,8 @@ namespace chakra
 		if (type == JsFunction)
 		{
 			JsPropertyIdRef staticClass = JS_INVALID_REFERENCE;
-			if (JsGetPropertyIdFromName(TEXT("StaticClass"), &staticClass) == JsNoError)
-			{
-				JsGetProperty(Value, staticClass, &Value);
-			}
+			JsCreatePropertyId("StaticClass", 11, &staticClass);
+			JsGetProperty(Value, staticClass, &Value);
 		}
 
 		bool isExternal = false;
@@ -84,12 +82,33 @@ namespace chakra
 
 	FString StringFromChakra(JsValueRef Value)
 	{
+		const int STACK_BUFFER_SIZE = 0x10000;
+		char Buffer[STACK_BUFFER_SIZE];
 		const TCHAR* StringPtr = nullptr;
 		size_t Strlen = 0;
-		if (JsStringToPointer(Value, &StringPtr, &Strlen) != JsNoError)
+		JsErrorCode err = JsCopyString(Value, nullptr, 0, &Strlen);
+		if (err != JsNoError)
 			return FString();
 
-		return FString(Strlen, StringPtr);
+		char* buffer = Buffer;
+		bool useExtraBuffer = Strlen >= STACK_BUFFER_SIZE;
+		if (useExtraBuffer)
+		{
+			buffer = reinterpret_cast<char*>(FMemory_Alloca(Strlen+1));
+			buffer[Strlen] = '\0';
+		}
+
+		err = JsCopyString(Value, buffer, Strlen, &Strlen);
+		if (err != JsNoError)
+		{
+			check(false);
+			if (useExtraBuffer)
+				delete buffer;
+
+			return FString();
+		}
+
+		return UTF8_TO_TCHAR(buffer);
 	}
 
 	FString StringFromArgs(const JsValueRef* args, unsigned short nargs, int StartIndex)
