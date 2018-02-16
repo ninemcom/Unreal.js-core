@@ -95,10 +95,10 @@ namespace chakra
 		if (useExtraBuffer)
 		{
 			buffer = reinterpret_cast<char*>(FMemory_Alloca(Strlen+1));
-			buffer[Strlen] = '\0';
 		}
 
 		err = JsCopyString(Value, buffer, Strlen, &Strlen);
+		buffer[Strlen] = '\0';
 		if (err != JsNoError)
 		{
 			check(false);
@@ -108,7 +108,11 @@ namespace chakra
 			return FString();
 		}
 
-		return UTF8_TO_TCHAR(buffer);
+		FString ret = UTF8_TO_TCHAR(buffer);
+		if (useExtraBuffer)
+			delete buffer;
+
+		return ret;
 	}
 
 	FString StringFromArgs(const JsValueRef* args, unsigned short nargs, int StartIndex)
