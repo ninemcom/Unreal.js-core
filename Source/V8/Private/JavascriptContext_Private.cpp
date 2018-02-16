@@ -3021,28 +3021,28 @@ public:
 		add_fn("log", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 		{
 			UE_LOG(Javascript, Log, TEXT("%s"), *chakra::StringFromArgs(arguments, argumentCount, 1));
-			return chakra::GetPrototype(arguments[0]);
+			return chakra::Undefined();
 		});
 
 		// console.warn
 		add_fn("warn", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 		{
 			UE_LOG(Javascript, Warning, TEXT("%s"), *chakra::StringFromArgs(arguments, argumentCount, 1));
-			return chakra::GetPrototype(arguments[0]);
+			return chakra::Undefined();
 		});
 
 		// console.info
 		add_fn("info", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 		{
 			UE_LOG(Javascript, Display, TEXT("%s"), *chakra::StringFromArgs(arguments, argumentCount, 1));
-			return chakra::GetPrototype(arguments[0]);
+			return chakra::Undefined();
 		});
 
 		// console.error
 		add_fn("error", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 		{
 			UE_LOG(Javascript, Error, TEXT("%s"), *chakra::StringFromArgs(arguments, argumentCount, 1));
-			return chakra::GetPrototype(arguments[0]);
+			return chakra::Undefined();
 		});
 
 		// console.assert
@@ -3061,13 +3061,13 @@ public:
 				UE_LOG(Javascript, Error, TEXT("%s"), *chakra::StringFromChakra(stack));
 			}
 
-			return chakra::GetPrototype(arguments[0]);
+			return chakra::Undefined();
 		});
 
 		// console.void
 		add_fn("void", [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 		{
-			return chakra::GetPrototype(arguments[0]);
+			return chakra::Undefined();
 		});
 
 		chakra::SetProperty(global_templ, "console", chakra::New(ConsoleTemplate));
