@@ -1069,7 +1069,7 @@ public:
 
 	void EnqueuePromiseTask(JsValueRef Task)
 	{
-		JsAddRef(Task, nullptr);
+		JsCheck(JsAddRef(Task, nullptr));
 		PromiseTasks.Add(Task);
 	}
 
@@ -1079,14 +1079,8 @@ public:
 		check(InRuntime != JS_INVALID_RUNTIME_HANDLE);
 
 		JsContextRef context = JS_INVALID_REFERENCE;
-		JsCreateContext(InRuntime, &context);
-		JsSetContextData(context, this);
-
-		// make task queue working
-		JsSetPromiseContinuationCallback([](JsValueRef Task, void* callbackState) {
-			reinterpret_cast<FJavascriptContextImplementation*>(callbackState)->EnqueuePromiseTask(Task);
-		}, this);
-
+		JsCheck(JsCreateContext(InRuntime, &context));
+		JsCheck(JsSetContextData(context, this));
 
 		context_.Reset(context);
 
@@ -1150,7 +1144,7 @@ public:
 
 		// Create a new object template
 		JsValueRef ObjectTemplate = JS_INVALID_REFERENCE;
-		JsCreateObject(&ObjectTemplate);
+		JsCheck(JsCreateObject(&ObjectTemplate));
 
 		// Save it into the persistant handle
 		GlobalTemplate.Reset(ObjectTemplate);
@@ -1183,6 +1177,11 @@ public:
 	void ExposeGlobals()
 	{
 		FContextScope context_scope(context());
+
+		// make task queue working
+		JsCheck(JsSetPromiseContinuationCallback([](JsValueRef Task, void* callbackState) {
+			reinterpret_cast<FJavascriptContextImplementation*>(callbackState)->EnqueuePromiseTask(Task);
+		}, this));
 
 		JsModuleRecord toplevelRecord = nullptr;
 		JsCheck(JsInitializeModuleRecord(nullptr, nullptr, &toplevelRecord));
@@ -1576,7 +1575,7 @@ public:
 			{
 				JsValueRef FuncMap = Functions;
 				JsValueRef Keys = JS_INVALID_REFERENCE;
-				JsGetOwnPropertyNames(FuncMap, &Keys);
+				JsCheck(JsGetOwnPropertyNames(FuncMap, &Keys));
 
 				int NumKeys = chakra::Length(Keys);
 
@@ -1631,7 +1630,7 @@ public:
 
 		FContextScope scope(context());
 		JsValueRef global = JS_INVALID_REFERENCE;
-		JsGetGlobalObject(&global);
+		JsCheck(JsGetGlobalObject(&global));
 
 		chakra::SetProperty(global, "CreateClass", chakra::FunctionTemplate(fn, this));
 	}
@@ -1695,7 +1694,7 @@ public:
 
 		FContextScope scope(context());
 		JsValueRef global = JS_INVALID_REFERENCE;
-		JsGetGlobalObject(&global);
+		JsCheck(JsGetGlobalObject(&global));
 
 		chakra::SetProperty(global, "CreateStruct", chakra::FunctionTemplate(fn, this));
 	}
@@ -1709,12 +1708,10 @@ public:
 		JsValueRef global = JS_INVALID_REFERENCE;
 		JsCheck(JsGetGlobalObject(&global));
 
-		int len = chakra::Length(keys);
-		for (int i = 0; i < len; i++)
+		TArray<FString> keysArr = StringArrayFromChakra(keys);
+		for (const FString& key : keysArr)
 		{
-			FString key = chakra::StringFromChakra(chakra::GetIndex(keys, i));
 			JsValueRef value = chakra::GetProperty(globalTmpl, key);
-
 			JsCheck(JsSetProperty(global, chakra::PropertyID(key), value, true));
 		}
 	}
@@ -1929,7 +1926,7 @@ public:
 		};
 
 		JsValueRef global = JS_INVALID_REFERENCE;
-		JsGetGlobalObject(&global);
+		JsCheck(JsGetGlobalObject(&global));
 
 		chakra::SetProperty(global, "require", chakra::FunctionTemplate(fn, this));
 		chakra::SetProperty(global, "purge_modules", chakra::FunctionTemplate(fn2, this));
@@ -1939,7 +1936,7 @@ public:
 			FContextScope scope(Self->context());
 
 			JsValueRef out = JS_INVALID_REFERENCE;
-			JsCreateObject(&out);
+			JsCheck(JsCreateObject(&out));
 
 			for (auto it = Self->Modules.CreateConstIterator(); it; ++it)
 			{
@@ -1962,7 +1959,7 @@ public:
 	{
 		FContextScope scope(context());
 		JsValueRef global = JS_INVALID_REFERENCE;
-		JsGetGlobalObject(&global);
+		JsCheck(JsGetGlobalObject(&global));
 
 		JsValueRef Template = chakra::FunctionTemplate();
 
@@ -2004,7 +2001,7 @@ public:
 
 
 								JsValueRef returnValue = JS_INVALID_REFERENCE;
-								JsCallFunction(function, argv, 2, &returnValue);
+								JsCheck(JsCallFunction(function, argv, 2, &returnValue));
 								return chakra::Undefined();
 							}
 						}
@@ -2037,7 +2034,7 @@ public:
 							argv[1] = ab;
 
 							JsValueRef returnValue = JS_INVALID_REFERENCE;
-							JsCallFunction(function, argv, 2, &returnValue);
+							JsCheck(JsCallFunction(function, argv, 2, &returnValue));
 							return chakra::Undefined();
 						}
 						else if (Dimension == 2)
@@ -2045,19 +2042,19 @@ public:
 							int Outer = Source->GetSize(0);
 							int Inner = Source->GetSize(1);
 							JsValueRef out_arr = JS_INVALID_REFERENCE;
-							JsCreateArray(Outer, &out_arr);
+							JsCheck(JsCreateArray(Outer, &out_arr));
 
 							argv[1] = out_arr;
 							for (auto Index = 0; Index < Outer; ++Index)
 							{
 								Indices[0] = Index;
 								JsValueRef ab = JS_INVALID_REFERENCE;
-								JsCreateExternalArrayBuffer(Source->GetMemory(Indices), Inner, nullptr, nullptr, &ab);
+								JsCheck(JsCreateExternalArrayBuffer(Source->GetMemory(Indices), Inner, nullptr, nullptr, &ab));
 								chakra::SetIndex(out_arr, Index, ab);
 							}
 
 							JsValueRef returnValue = JS_INVALID_REFERENCE;
-							JsCallFunction(function, argv, 2, &returnValue);
+							JsCheck(JsCallFunction(function, argv, 2, &returnValue));
 							return chakra::Undefined();
 						}
 					}
@@ -2075,7 +2072,7 @@ public:
 						}
 
 						JsValueRef returnValue = JS_INVALID_REFERENCE;
-						JsCallFunction(function, argv, 2, &returnValue);
+						JsCheck(JsCallFunction(function, argv, 2, &returnValue));
 						return chakra::Undefined();
 					}
 				}
@@ -2092,12 +2089,12 @@ public:
 
 		FContextScope scope(context());
 		JsValueRef global = JS_INVALID_REFERENCE, dummy = JS_INVALID_REFERENCE;
-		JsGetGlobalObject(&global);
+		JsCheck(JsGetGlobalObject(&global));
 
 		for (JsValueRef task : tasksCopy)
 		{
-			JsCallFunction(task, &global, 1, &dummy);
-			JsRelease(task, nullptr);
+			JsCheck(JsCallFunction(task, &global, 1, &dummy));
+			JsCheck(JsRelease(task, nullptr));
 		}
 
 		return true;
@@ -2167,10 +2164,8 @@ public:
 	{
 		// @todo: using 'ForTesting' function
 		JsRuntimeHandle runtime = JS_INVALID_RUNTIME_HANDLE;
-		JsErrorCode err = JsGetRuntime(context(), &runtime);
-		check(err == JsNoError);
-
-		JsCollectGarbage(runtime);
+		JsCheck(JsGetRuntime(context(), &runtime));
+		JsCheck(JsCollectGarbage(runtime));
 	}
 
 	// Should be guarded with proper handle scope
@@ -2191,11 +2186,13 @@ public:
 		JsValueRef returnValue = JS_INVALID_REFERENCE;
 
 		// Use FString script directly
-		JsValueRef script = JS_INVALID_REFERENCE;
-		TArray<TCHAR> scriptData = Script.GetCharArray();
-		JsCreateExternalArrayBuffer(scriptData.GetData(), scriptData.Num() * scriptData.GetTypeSize(), nullptr, nullptr, &script);
+		//JsValueRef script = JS_INVALID_REFERENCE;
+		//TArray<TCHAR> scriptData = Script.GetCharArray();
+		//JsCreateExternalArrayBuffer(scriptData.GetData(), scriptData.Num() * scriptData.GetTypeSize(), nullptr, nullptr, &script);
+		JsValueRef script = chakra::String(Script);
 
-		JsErrorCode err = JsRun(script, 0, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributeArrayBufferIsUtf16Encoded, &returnValue);
+		//JsErrorCode err = JsRun(script, 0, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributeArrayBufferIsUtf16Encoded, &returnValue);
+		JsErrorCode err = JsRun(script, 0, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributeNone, &returnValue);
 		if (err == JsNoError)
 			return returnValue;
 
@@ -2212,6 +2209,12 @@ public:
 		if (err == JsErrorScriptCompile)
 		{
 			UncaughtException("Invalid command");
+
+			JsValueRef exception = JS_INVALID_REFERENCE;
+			JsCheck(JsGetAndClearException(&exception));
+
+			FString strErr = chakra::StringFromChakra(chakra::GetProperty(exception, "stack"));
+			UncaughtException(strErr);
 			return JS_INVALID_REFERENCE;
 		}
 
@@ -2235,7 +2238,7 @@ public:
 		FContextScope context_scope(context());
 
 		JsValueRef global = JS_INVALID_REFERENCE;
-		JsGetGlobalObject(&global);
+		JsCheck(JsGetGlobalObject(&global));
 
 		chakra::FPropertyDescriptor desc;
 		desc.Getter = chakra::FunctionTemplate(RootGetter, ExportObject(Object));
@@ -2320,7 +2323,7 @@ public:
 
 									JsValueRef args[] = { Packer, DefaultValue };
 									JsValueRef ret = JS_INVALID_REFERENCE;
-									JsCallFunction(Packer, args, 2, &ret);
+									JsCheck(JsCallFunction(Packer, args, 2, &ret));
 									FString Ret = chakra::StringFromChakra(ret);
 									ParameterWithValue = FString::Printf(TEXT("%s = %s"), *Parameter, *Ret);
 								}
@@ -2522,7 +2525,7 @@ public:
 		if (!chakra::IsEmpty(func) && chakra::IsFunction(func))
 		{
 			JsValueRef global = JS_INVALID_REFERENCE;
-			JsGetGlobalObject(&global);
+			JsCheck(JsGetGlobalObject(&global));
 
 			CallJavascriptFunction(context(), This ? ExportObject(This) : global, FunctionToCall, func, Parms);
 
@@ -2542,7 +2545,7 @@ public:
 		FContextScope context_scope(context());
 
 		JsValueRef global = JS_INVALID_REFERENCE;
-		JsGetGlobalObject(&global);
+		JsCheck(JsGetGlobalObject(&global));
 		JsValueRef func = chakra::GetProperty(global, "$uncaughtException");
 		if (!chakra::IsEmpty(func) && chakra::IsFunction(func))
 		{
@@ -2551,7 +2554,7 @@ public:
 			argv[1] = chakra::String(Exception);
 
 			JsValueRef returnValue = JS_INVALID_REFERENCE;
-			JsCallFunction(func, argv, 2, &returnValue);
+			JsCheck(JsCallFunction(func, argv, 2, &returnValue));
 		}
 
 		UE_LOG(Javascript, Error, TEXT("%s"), *Exception);
@@ -2629,7 +2632,7 @@ public:
 			auto len = (uint32_t)(helper.Num());
 
 			JsValueRef arr = JS_INVALID_REFERENCE;
-			JsCreateArray(len, &arr);
+			JsCheck(JsCreateArray(len, &arr));
 
 			auto Inner = p->Inner;
 
@@ -2682,7 +2685,7 @@ public:
 
 			int Num = SetHelper.Num();
 			JsValueRef Out = JS_INVALID_REFERENCE;
-			JsCreateArray(Num, &Out);
+			JsCheck(JsCreateArray(Num, &Out));
 
 			for (int Index = 0; Index < Num; ++Index)
 			{
@@ -2698,7 +2701,7 @@ public:
 			FScriptMapHelper_InContainer MapHelper(p, Buffer);
 
 			JsValueRef Out = JS_INVALID_REFERENCE;
-			JsCreateObject(&Out);
+			JsCheck(JsCreateObject(&Out));
 
 			int Num = MapHelper.Num();
 			for (int Index = 0; Index < Num; ++Index)
@@ -2725,7 +2728,7 @@ public:
 		FScopeCycleCounterUObject StructContext(Struct);
 
 		JsValueRef arr = JS_INVALID_REFERENCE;
-		JsGetOwnPropertyNames(v8_obj, &arr);
+		JsCheck(JsGetOwnPropertyNames(v8_obj, &arr));
 		if (chakra::IsEmpty(arr)) return;
 
 		int len = chakra::Length(arr);
@@ -2983,7 +2986,7 @@ public:
 
 				JsValueRef v = Value;
 				JsValueRef PropertyNames = JS_INVALID_REFERENCE;
-				JsGetOwnPropertyNames(v, &PropertyNames);
+				JsCheck(JsGetOwnPropertyNames(v, &PropertyNames));
 				int Num = chakra::Length(PropertyNames);
 				for (decltype(Num) Index = 0; Index < Num; ++Index) {
 					JsValueRef Key = chakra::GetIndex(PropertyNames, Index);
@@ -3053,7 +3056,7 @@ public:
 				JsCheck(JsCreateError(chakra::String(message), &error));
 
 				JsValueRef stack = chakra::GetProperty(error, "stack");
-				JsConvertValueToString(stack, &stack); // => stack = stack.toString();
+				JsCheck(JsConvertValueToString(stack, &stack)); // => stack = stack.toString();
 
 				UE_LOG(Javascript, Error, TEXT("%s"), *chakra::StringFromChakra(stack));
 			}
@@ -3089,7 +3092,7 @@ public:
 				if (!chakra::IsEmpty(function))
 				{
 					JsValueRef returnValue = JS_INVALID_REFERENCE;
-					JsCallFunction(function, &arguments[0], 1, &returnValue);
+					JsCheck(JsCallFunction(function, &arguments[0], 1, &returnValue));
 				}				
 			}
 
@@ -3108,7 +3111,7 @@ public:
 				if (!chakra::IsEmpty(function))
 				{
 					JsValueRef returnValue = JS_INVALID_REFERENCE;
-					JsCallFunction(function, &arguments[0], 1, &returnValue);
+					JsCheck(JsCallFunction(function, &arguments[0], 1, &returnValue));
 				}
 			}
 
@@ -3135,14 +3138,14 @@ public:
 						{
 							FScopeCycleCounterUObject ContextScope(Object);
 							JsValueRef returnValue = JS_INVALID_REFERENCE;
-							JsCallFunction(function, &arguments[0], 1, &returnValue);
+							JsCheck(JsCallFunction(function, &arguments[0], 1, &returnValue));
 
 							return returnValue;
 						}
 					}
 
 					JsValueRef returnValue = JS_INVALID_REFERENCE;
-					JsCallFunction(function, &arguments[0], 1, &returnValue);
+					JsCheck(JsCallFunction(function, &arguments[0], 1, &returnValue));
 					return returnValue;
 				}
 			}
@@ -3171,7 +3174,7 @@ public:
 				if (Source)
 				{
 					JsValueRef ab = JS_INVALID_REFERENCE;
-					JsCreateExternalArrayBuffer(Source->GetMemory(), Source->GetSize(), nullptr, nullptr, &ab);
+					JsCheck(JsCreateExternalArrayBuffer(Source->GetMemory(), Source->GetSize(), nullptr, nullptr, &ab));
 					chakra::SetProperty(ab, "$source", arguments[1]);
 					return ab;
 				}
@@ -3192,7 +3195,7 @@ public:
 
 				JsValueRef argv[2] = { arguments[0], arr };
 				JsValueRef returnValue = JS_INVALID_REFERENCE;
-				JsCallFunction(function, argv, 2, &returnValue);
+				JsCheck(JsCallFunction(function, argv, 2, &returnValue));
 
 				GCurrentContents = JS_INVALID_REFERENCE;
 			}
@@ -3933,7 +3936,7 @@ public:
 							int len = chakra::Length(arr);
 							
 							JsValueRef out_arr = JS_INVALID_REFERENCE;
-							JsCreateArray(len, &out_arr);
+							JsCheck(JsCreateArray(len, &out_arr));
 							chakra::SetProperty(out, name, out_arr);
 
 							for (decltype(len) Index = 0; Index < len; ++Index)
@@ -4018,7 +4021,7 @@ public:
 				// Called by system (via ExportObject)
 				if (argumentCount == 2 && chakra::IsExternal(arguments[1]))
 				{
-					JsGetExternalData(arguments[1], reinterpret_cast<void**>(&Associated));
+					JsCheck(JsGetExternalData(arguments[1], reinterpret_cast<void**>(&Associated)));
 
 					if (!Associated->IsValidLowLevel())
 					{
