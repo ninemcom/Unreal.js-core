@@ -1210,6 +1210,7 @@ public:
 	void PurgeModules()
 	{
 		Modules.Empty();
+		ModuleDirectories.Empty();
 	}
 
 	void GenerateBlueprintFunctionLibraryMapping()
