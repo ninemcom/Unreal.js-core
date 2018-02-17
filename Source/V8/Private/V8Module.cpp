@@ -143,7 +143,7 @@ public:
         catch (e) { scope = null; }
         pattern = pattern.substr(index + 1);
     }
-    result = [];
+    var result = [];
     for (var k in scope) {
         if (k.indexOf(pattern) == 0) {
             result.push(head + left + k);

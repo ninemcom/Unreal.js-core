@@ -838,6 +838,18 @@ namespace {
 		Class->ClassConstructor(ObjectInitializer);
 		CurrentClassUnderConstruction = nullptr;
 	};
+
+	struct FJsModuleMessage
+	{
+		FJsModuleMessage() : ReferencingModule(JS_INVALID_REFERENCE), Specifier(JS_INVALID_REFERENCE) {}
+		FJsModuleMessage(JsModuleRecord ReferencingModule, JsValueRef Specifier)
+			: ReferencingModule(ReferencingModule)
+			, Specifier(Specifier)
+		{}
+
+		JsModuleRecord ReferencingModule;
+		JsValueRef Specifier;
+	};
 }
 
 class FJavascriptContextImplementation : public FJavascriptContext
@@ -856,6 +868,7 @@ class FJavascriptContextImplementation : public FJavascriptContext
 	FTickerDelegate TickDelegate;
 	FDelegateHandle TickHandle;
 	TArray<JsValueRef> PromiseTasks;
+	TQueue<FJsModuleMessage> PendingModules;
 
 
 	virtual const FObjectInitializer* GetObjectInitializer() override
@@ -1019,7 +1032,10 @@ public:
 		}
 	};
 
-	TMap<FString, Persistent<JsValueRef>> Modules;
+	int ModuleSourceContext = 0;
+	TMap<JsModuleRecord, FString> ModuleDirectories;
+	TMap<JsSourceContext, FString> ScriptDirectories;
+	TMap<FString, JsModuleRecord> Modules;
 	TArray<FString>& Paths;
 
 	void SetAsDebugContext(int32 InPort)
@@ -1182,18 +1198,6 @@ public:
 		JsCheck(JsSetPromiseContinuationCallback([](JsValueRef Task, void* callbackState) {
 			reinterpret_cast<FJavascriptContextImplementation*>(callbackState)->EnqueuePromiseTask(Task);
 		}, this));
-
-		JsModuleRecord toplevelRecord = nullptr;
-		JsCheck(JsInitializeModuleRecord(nullptr, nullptr, &toplevelRecord));
-
-		//JsSetModuleHostInfo(toplevelRecord, JsModuleHostInfoKind::JsModuleHostInfo_FetchImportedModuleCallback, [](JsModuleRecord Importer, JsValueRef ModuleName, JsModuleRecord* OutModule) {
-		//	return JsNoError;
-		//});
-
-		//JsSetModuleHostInfo(toplevelRecord, JsModuleHostInfo_NotifyModuleReadyCallback, [](JsModuleRecord module, JsValueRef exception) {
-		//	return JsNoError;
-		//});
-
 
 		CopyGlobalTemplate();
 		ExposeRequire();
@@ -1716,8 +1720,121 @@ public:
 		}
 	}
 
+	JsErrorCode InitializeModuleInfo(JsValueRef Specifier, JsModuleRecord ModuleRecord)
+	{
+		JsErrorCode err = JsNoError;
+		err = JsSetModuleHostInfo(ModuleRecord, JsModuleHostInfo_FetchImportedModuleCallback, &FJavascriptContextImplementation::FetchImportedModuleCallback);
+		if (err != JsNoError) return err;
+
+		err = JsSetModuleHostInfo(ModuleRecord, JsModuleHostInfo_FetchImportedModuleFromScriptCallback, &FJavascriptContextImplementation::FetchImportedModuleFromScriptCallback);
+		if (err != JsNoError) return err;
+
+		err = JsSetModuleHostInfo(ModuleRecord, JsModuleHostInfo_NotifyModuleReadyCallback, &FJavascriptContextImplementation::NotifyModuleReadyCallback);
+		if (err != JsNoError) return err;
+
+		err = JsSetModuleHostInfo(ModuleRecord, JsModuleHostInfo_HostDefined, Specifier);
+		return err;
+	}
+
+	// callback when module imported
+	static JsErrorCode FetchImportedModuleCallback(JsModuleRecord referencingModule, JsValueRef specifier, JsModuleRecord* dependentModuleRecord)
+	{
+		return GetSelf()->FetchImportedModuleImpl(referencingModule, specifier, dependentModuleRecord);
+	}
+
+	JsErrorCode FetchImportedModuleImpl(JsModuleRecord referencingModule, JsValueRef specifier, JsModuleRecord* dependentModuleRecord)
+	{
+		if (ModuleDirectories.Contains(referencingModule))
+			return FetchImpotedModule(referencingModule, specifier, dependentModuleRecord, ModuleDirectories[referencingModule]);
+
+		return FetchImpotedModule(referencingModule, specifier, dependentModuleRecord, TEXT(""));
+	}
+
+	// callback when module imported from script
+	static JsErrorCode FetchImportedModuleFromScriptCallback(JsSourceContext dwReferencingSourceContext, JsValueRef specifier, JsModuleRecord* dependentModuleRecord)
+	{
+		return GetSelf()->FetchImportedModuleImpl(nullptr, specifier, dependentModuleRecord);
+	}
+
+	JsErrorCode FetchImportedModuleFromScript(JsSourceContext dwReferencingSourceContext, JsValueRef specifier, JsModuleRecord* dependentModuleRecord)
+	{
+		if (ScriptDirectories.Contains(dwReferencingSourceContext))
+			return FetchImpotedModule(nullptr, specifier, dependentModuleRecord, ScriptDirectories[dwReferencingSourceContext]);
+
+		return FetchImpotedModule(nullptr, specifier, dependentModuleRecord, TEXT(""));
+	}
+
+	static JsErrorCode NotifyModuleReadyCallback(JsModuleRecord referencingModule, JsValueRef exceptionVar)
+	{
+		return GetSelf()->NotifyModuleReady(referencingModule, exceptionVar);
+	}
+
+	JsErrorCode NotifyModuleReady(JsModuleRecord referencingModule, JsValueRef exceptionVar)
+	{
+		if (exceptionVar != JS_INVALID_REFERENCE)
+		{
+			JsCheck(JsSetException(exceptionVar));
+
+			JsValueRef specifier = JS_INVALID_REFERENCE;
+			JsCheck(JsGetModuleHostInfo(referencingModule, JsModuleHostInfo_HostDefined, &specifier));
+
+			FString filename;
+			if (specifier != JS_INVALID_REFERENCE)
+				filename = chakra::StringFromChakra(specifier);
+
+			JsValueRef strErr = JS_INVALID_REFERENCE;
+			JsCheck(JsConvertValueToString(exceptionVar, &strErr));
+
+			UE_LOG(Javascript, Error, TEXT("NotifyModuleReady exception! %s, %s"), *filename, *chakra::StringFromChakra(strErr));
+
+			JsValueRef dummyException = JS_INVALID_REFERENCE;
+			JsCheck(JsGetAndClearException(&dummyException)); // just consume the exception
+			dummyException;
+		}
+		else
+		{
+			PendingModules.Enqueue(FJsModuleMessage(referencingModule, JS_INVALID_REFERENCE));
+		}
+
+		return JsNoError;
+	}
+
+	JsErrorCode FetchImpotedModule(JsModuleRecord referencingModule, JsValueRef specifier, JsModuleRecord* dependentModuleRecord, const FString& baseDir)
+	{
+		FString strSpecifier = chakra::StringFromChakra(specifier);
+		FString fullPath = baseDir + strSpecifier;
+		fullPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*(baseDir / strSpecifier));
+
+		JsModuleRecord* it = Modules.Find(fullPath);
+		if (it != nullptr)
+		{
+			*dependentModuleRecord = *it;
+			return JsNoError;
+		}
+
+		JsModuleRecord newModule = JS_INVALID_REFERENCE;
+		JsErrorCode err = JsInitializeModuleRecord(referencingModule, specifier, &newModule);
+		if (err != JsNoError)
+			return err;
+
+		ModuleDirectories.Add(newModule, FPaths::GetPath(fullPath));
+		Modules.Add(fullPath, newModule);
+		InitializeModuleInfo(specifier, newModule);
+		*dependentModuleRecord = newModule;
+		PendingModules.Enqueue(FJsModuleMessage(newModule, specifier));
+
+		return JsNoError;
+	}
+
 	void ExposeRequire()
 	{
+		FContextScope scope(context());
+
+		JsModuleRecord RootModule = JS_INVALID_REFERENCE;
+		JsCheck(JsInitializeModuleRecord(nullptr, nullptr, &RootModule));
+		JsCheck(InitializeModuleInfo(nullptr, RootModule));
+		return;
+
 		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
 			if (argumentCount != 2 || !chakra::IsString(arguments[1]))
 			{
@@ -1741,7 +1858,7 @@ public:
 				auto it = Self->Modules.Find(full_path);
 				if (it)
 				{
-					returnValue = it->Get();
+					returnValue = *it;
 					return true;
 				}
 
@@ -1749,7 +1866,7 @@ public:
 				if (FFileHelper::LoadFileToString(Text, *script_path))
 				{
 					Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports; (function () { %s\n })()\n;return module.exports;}(this,'%s', '%s'));"), *Text, *script_path, *FPaths::GetPath(script_path));
-					JsValueRef exports = Self->RunScript(full_path, Text, 0);
+					JsValueRef exports = Self->RunScript(full_path, Text, false);
 					if (chakra::IsEmpty(exports))
 					{
 						UE_LOG(Javascript, Log, TEXT("Invalid script for require"));
@@ -1785,7 +1902,7 @@ public:
 #if PLATFORM_WINDOWS
 					full_path = full_path.Replace(TEXT("/"), TEXT("\\"));
 #endif
-					JsValueRef exports = Self->RunScript(full_path, Text, 0);
+					JsValueRef exports = Self->RunScript(full_path, Text, false);
 					if (chakra::IsEmpty(exports) || !chakra::IsString(exports))
 					{
 						return false;
@@ -1808,7 +1925,7 @@ public:
 				auto it = Self->Modules.Find(full_path);
 				if (it)
 				{
-					returnValue = it->Get();
+					returnValue = *it;
 					found = true;
 					return true;
 				}
@@ -1821,7 +1938,7 @@ public:
 #if PLATFORM_WINDOWS
 					full_path = full_path.Replace(TEXT("/"), TEXT("\\"));
 #endif
-					JsValueRef exports = Self->RunScript(full_path, Text, 0);
+					JsValueRef exports = Self->RunScript(full_path, Text, false);
 					if (chakra::IsEmpty(exports) || !chakra::IsObject(exports))
 					{
 						return false;
@@ -1941,7 +2058,7 @@ public:
 			for (auto it = Self->Modules.CreateConstIterator(); it; ++it)
 			{
 				const FString& name = it.Key();
-				const JsValueRef& module = it.Value().Get();
+				const JsValueRef& module = it.Value();
 
 				FString FullPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*name);
 				chakra::SetProperty(out, name, chakra::String(FullPath));
@@ -2084,18 +2201,23 @@ public:
 
 	bool HandleTicker(float DeltaTime)
 	{
-		TArray<JsValueRef> tasksCopy(const_cast<const TArray<JsValueRef>&>(PromiseTasks));
-		PromiseTasks.Empty();
-
-		FContextScope scope(context());
-		JsValueRef global = JS_INVALID_REFERENCE, dummy = JS_INVALID_REFERENCE;
-		JsCheck(JsGetGlobalObject(&global));
-
-		for (JsValueRef task : tasksCopy)
 		{
-			JsCheck(JsCallFunction(task, &global, 1, &dummy));
-			JsCheck(JsRelease(task, nullptr));
+			TArray<JsValueRef> tasksCopy(const_cast<const TArray<JsValueRef>&>(PromiseTasks));
+			PromiseTasks.Empty();
+
+			FContextScope scope(context());
+			JsValueRef global = JS_INVALID_REFERENCE, dummy = JS_INVALID_REFERENCE;
+			JsCheck(JsGetGlobalObject(&global));
+
+			for (JsValueRef task : tasksCopy)
+			{
+				JsCheck(JsCallFunction(task, &global, 1, &dummy));
+				JsCheck(JsRelease(task, nullptr));
+			}
 		}
+
+		// wait for dynamic import
+		FlushModuleTasks(nullptr);
 
 		return true;
 	}
@@ -2130,8 +2252,9 @@ public:
 		FString Script = ReadScriptFile(Filename);
 
 		FString ScriptPath = GetScriptFileFullPath(Filename);
-		FString Text = FString::Printf(TEXT("(function (global,__filename,__dirname) { %s\n;}(this,'%s','%s'));"), *Script, *ScriptPath, *FPaths::GetPath(ScriptPath));
-		return RunScript(ScriptPath, Text, 0);
+		//FString Text = FString::Printf(TEXT("(function (global,__filename,__dirname) { %s\n;}(this,'%s','%s'));"), *Script, *ScriptPath, *FPaths::GetPath(ScriptPath));
+		//return RunScript(ScriptPath, Text, 0);
+		return RunScript(ScriptPath, Script, true);
 	}
 
 	void Public_RunFile(const FString& Filename)
@@ -2143,7 +2266,7 @@ public:
 	{
 		FContextScope context_scope(context());
 
-		JsValueRef ret = RunScript(TEXT("(inline)"), Script);
+		JsValueRef ret = RunScript(TEXT("(inline)"), Script, false);
 		FString str = "(empty)";
 		if (!chakra::IsEmpty(ret))
 		{
@@ -2169,7 +2292,7 @@ public:
 	}
 
 	// Should be guarded with proper handle scope
-	JsValueRef RunScript(const FString& Filename, const FString& Script, int line_offset = 0)
+	JsValueRef RunScript(const FString& Filename, const FString& Script, bool bModule)
 	{
 		FContextScope context_scope(context());
 
@@ -2185,41 +2308,151 @@ public:
 		JsValueRef path = chakra::String(LocalPathToURL(Path));
 		JsValueRef returnValue = JS_INVALID_REFERENCE;
 
-		// Use FString script directly
-		//JsValueRef script = JS_INVALID_REFERENCE;
-		//TArray<TCHAR> scriptData = Script.GetCharArray();
-		//JsCreateExternalArrayBuffer(scriptData.GetData(), scriptData.Num() * scriptData.GetTypeSize(), nullptr, nullptr, &script);
-		JsValueRef script = chakra::String(Script);
-
-		//JsErrorCode err = JsRun(script, 0, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributeArrayBufferIsUtf16Encoded, &returnValue);
-		JsErrorCode err = JsRun(script, 0, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributeNone, &returnValue);
-		if (err == JsNoError)
-			return returnValue;
-
-		if (err == JsErrorScriptException)
+		if (bModule)
 		{
-			JsValueRef exception = JS_INVALID_REFERENCE;
-			JsCheck(JsGetAndClearException(&exception));
+			JsModuleRecord rootModule = JS_INVALID_REFERENCE;
+			JsValueRef specifier = chakra::String(Filename);
+			JsCheck(JsInitializeModuleRecord(nullptr, specifier, &rootModule));
+			JsCheck(InitializeModuleInfo(specifier, rootModule));
 
-			FString strErr = chakra::StringFromChakra(chakra::GetProperty(exception, "stack"));
-			UncaughtException(strErr);
-			return JS_INVALID_REFERENCE;
+			FString shim = FString::Printf(TEXT(R"raw(
+import main from '%s';
+let global = (new Function('return this;'))();
+global.__export = main;
+)raw"), *Filename);
+
+			FTCHARToUTF8 script(*shim);
+			JsValueRef exception = JS_INVALID_REFERENCE;
+			JsErrorCode err = JsParseModuleSource(rootModule, 0, (BYTE*)script.Get(), script.Length(), JsParseModuleSourceFlags_DataIsUTF8, &exception);
+			if (err == JsErrorScriptCompile)
+			{
+				UncaughtException("Invalid command");
+				return JS_INVALID_REFERENCE;
+			}
+
+			if (err != JsNoError)
+			{
+				checkf(false, TEXT("failed to execute script! %d"), (int)err);
+				return JS_INVALID_REFERENCE;
+			}
+
+			FlushModuleTasks(&returnValue);
+		}
+		else
+		{
+			JsValueRef script = chakra::String(Script);
+			JsErrorCode err = JsRun(script, 0, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributeNone, &returnValue);
+			if (err == JsErrorScriptException)
+			{
+				JsValueRef exception = JS_INVALID_REFERENCE;
+				JsCheck(JsGetAndClearException(&exception));
+
+				FString strErr = chakra::StringFromChakra(chakra::GetProperty(exception, "stack"));
+				UncaughtException(strErr);
+				return JS_INVALID_REFERENCE;
+			}
+
+			if (err == JsErrorScriptCompile)
+			{
+				UncaughtException("Invalid command");
+				return JS_INVALID_REFERENCE;
+			}
+
+			if (err != JsNoError)
+			{
+				checkf(false, TEXT("failed to execute script! %d"), (int)err);
+				return JS_INVALID_REFERENCE;
+			}
 		}
 
-		if (err == JsErrorScriptCompile)
+		return returnValue;
+	}
+
+	void FlushModuleTasks(JsValueRef* returnValue)
+	{
+		if (returnValue != nullptr)
+			*returnValue = JS_INVALID_REFERENCE;
+
+		FJsModuleMessage module;
+		while (PendingModules.Dequeue(module))
 		{
-			UncaughtException("Invalid command");
+			if (module.Specifier == JS_INVALID_REFERENCE)
+			{
+				JsValueRef result = JS_INVALID_REFERENCE;
+				JsErrorCode err = JsModuleEvaluation(module.ReferencingModule, &result);
+				if (err != JsNoError)
+				{
+					if (err == JsErrorScriptException)
+					{
+						JsValueRef exception = JS_INVALID_REFERENCE;
+						JsCheck(JsGetAndClearException(&exception));
 
-			JsValueRef exception = JS_INVALID_REFERENCE;
-			JsCheck(JsGetAndClearException(&exception));
+						JsValueRef strException = JS_INVALID_REFERENCE;
+						JsCheck(JsConvertValueToString(chakra::GetProperty(exception, "stack"), &strException));
 
-			FString strErr = chakra::StringFromChakra(chakra::GetProperty(exception, "stack"));
-			UncaughtException(strErr);
-			return JS_INVALID_REFERENCE;
+						UncaughtException(chakra::StringFromChakra(strException));
+					}
+					else
+					{
+						UncaughtException(FString::Printf(TEXT("Module parse failed: %d"), int(err)));
+					}
+				}
+
+				JsValueRef global = JS_INVALID_REFERENCE;
+				JsCheck(JsGetGlobalObject(&global));
+
+				JsValueRef mainFunction = chakra::GetProperty(global, "__export");
+				JsValueRef deleteResult;
+				JsCheck(JsDeleteProperty(global, chakra::PropertyID("__export"), true, &deleteResult));
+
+				if (chakra::IsFunction(mainFunction) && returnValue != nullptr)
+				{
+					JsErrorCode execErr = JsCallFunction(mainFunction, &global, 1, returnValue);
+
+					if (execErr == JsErrorScriptException)
+					{
+						JsValueRef exception = JS_INVALID_REFERENCE;
+						JsCheck(JsGetAndClearException(&exception));
+
+						FString strErr = chakra::StringFromChakra(chakra::GetProperty(exception, "stack"));
+						UncaughtException(strErr);
+						return;
+					}
+
+					if (execErr != JsNoError)
+					{
+						checkf(false, TEXT("failed to execute script! %d"), (int)execErr);
+						return;
+					}
+				}
+			}
+			else
+			{
+				check(module.ReferencingModule == JS_INVALID_REFERENCE || ModuleDirectories.Contains(module.ReferencingModule));
+				FString Filename = chakra::StringFromChakra(module.Specifier);
+				if (module.ReferencingModule != JS_INVALID_REFERENCE)
+					Filename = FPaths::ConvertRelativePathToFull(ModuleDirectories[module.ReferencingModule], Filename);
+
+				// check if directory module
+				FString physicalPath = Filename;
+				if (IFileManager::Get().DirectoryExists(*physicalPath))
+					physicalPath = physicalPath / TEXT("index.js");
+
+				if (!physicalPath.EndsWith(".js"))
+					physicalPath.Append(".js");
+
+				FString Script = ReadScriptFile(physicalPath);
+				FString ScriptPath = GetScriptFileFullPath(Filename);
+				JsModuleRecord record = JS_INVALID_REFERENCE;
+				if (Modules.Contains(ScriptPath))
+					record = Modules[ScriptPath];
+
+				check(record != JS_INVALID_REFERENCE);
+				FTCHARToUTF8 script(*Script);
+				JsValueRef exception = JS_INVALID_REFERENCE;
+				JsParseModuleSource(record, ModuleSourceContext++, (BYTE*)script.Get(), script.Length(), JsParseModuleSourceFlags_DataIsUTF8, &exception);
+			}
 		}
-
-		checkf(false, TEXT("failed to execute script! %d"), (int)err);
-		return JS_INVALID_REFERENCE;
 	}
 
     void FindPathFile(FString TargetRootPath, FString TargetFileName, TArray<FString>& OutFiles)
@@ -2274,10 +2507,13 @@ public:
 		TokenWriter w;
 
 		int DefaultValueId = 0;
-		JsValueRef Packer = RunScript(TEXT(""), TEXT("JSON.stringify"));
+		JsValueRef Packer = RunScript(TEXT(""), TEXT("JSON.stringify"), false);
 
 		auto guard_pre = [&] { w.push("try { "); };
 		auto guard_post = [&] { w.push(" } catch (e) {};\n"); };
+
+		// export
+		w.push("export default () => {\n");
 
 		for (auto it = ClassToFunctionTemplateMap.CreateConstIterator(); it; ++it)
 		{
@@ -2447,6 +2683,8 @@ public:
 				conditional_emit_alias(Function);
 			}
 		}
+
+		w.push("};");
 
 		return FFileHelper::SaveStringToFile(*w, *Filename);
 #else
