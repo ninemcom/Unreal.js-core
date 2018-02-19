@@ -1032,7 +1032,8 @@ public:
 		}
 	};
 
-	int ModuleSourceContext = 0;
+	int NextModuleSourceContext = 0;
+	TArray<int> ModuleSourceContexts;
 	TMap<JsModuleRecord, FString> ModuleDirectories;
 	TMap<JsSourceContext, FString> ScriptDirectories;
 	TMap<FString, JsModuleRecord> Modules;
@@ -1061,6 +1062,12 @@ public:
 			debugger->Destroy();
 			debugger = nullptr;
 		}
+	}
+
+	int LastModuleSourceContext() const
+	{
+		check(ModuleSourceContexts.Num() != 0);
+		return ModuleSourceContexts.Last();
 	}
 
 	void CreateInspector(int32 Port)
@@ -1837,13 +1844,6 @@ public:
 				return chakra::Undefined();
 			}
 
-			JsValueRef strCallee;
-			JsCheck(JsConvertValueToString(callee, &strCallee));
-
-			JsValueType calleeType;
-			JsCheck(JsGetValueType(callee, &calleeType));
-			UE_LOG(Javascript, Log, TEXT("callee: %s, type: %d"), *chakra::StringFromChakra(strCallee), int(calleeType));
-
 			FJavascriptContextImplementation* Self = reinterpret_cast<FJavascriptContextImplementation*>(callbackState);
 			FContextScope scope(Self->context());
 
@@ -1862,6 +1862,7 @@ public:
 				if (it)
 				{
 					returnValue = *it;
+					found = true;
 					return true;
 				}
 
@@ -2012,13 +2013,13 @@ public:
 			};
 
 			JsValueRef ret = JS_INVALID_REFERENCE;
-			JsCheck(JsRun(chakra::String(TEXT("new Error().stack")), GetSelf()->ModuleSourceContext-1, chakra::String(""), JsParseScriptAttributeNone, &ret));
+			JsCheck(JsRun(chakra::String(TEXT("new Error().stack")), GetSelf()->LastModuleSourceContext(), chakra::String(""), JsParseScriptAttributeNone, &ret));
 
 			FString stack = chakra::StringFromChakra(ret);
-			JsCheck(JsRun(chakra::String(TEXT(R"raw(/\((file:\/\/\/.*):\d+:\d+\)/.exec(new Error().stack.split('\n')[1])[1])raw")), GetSelf()->ModuleSourceContext-1, chakra::String(""), JsParseScriptAttributeNone, &ret));
+			JsCheck(JsRun(chakra::String(TEXT(R"raw(/\((file:\/\/\/.*):\d+:\d+\)/.exec(new Error().stack.split('\n')[1])[1])raw")), GetSelf()->LastModuleSourceContext(), chakra::String(""), JsParseScriptAttributeNone, &ret));
 
-			FString current_script_path = chakra::StringFromChakra(ret);
-			current_script_path = FPaths::GetPath(URLToLocalPath(current_script_path));
+			FString current_script = chakra::StringFromChakra(ret);
+			FString current_script_path = FPaths::GetPath(URLToLocalPath(current_script));
 
 			if (!(required_module[0] == '.' && inner2(current_script_path)))
 			{
@@ -2352,15 +2353,31 @@ global.__export = main;
 		else
 		{
 			JsValueRef script = chakra::String(Script);
-			JsErrorCode err = JsRun(script, ModuleSourceContext++, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributes::JsParseScriptAttributeLibraryCode, &returnValue);
+			JsErrorCode err = JsNoError;
+
+				int SourceContext = NextModuleSourceContext++;
+			{
+				// run script with context stack
+				ModuleSourceContexts.Push(SourceContext);
+				err = JsRun(script, SourceContext, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributes::JsParseScriptAttributeLibraryCode, &returnValue);
+				check(LastModuleSourceContext() == SourceContext);
+				ModuleSourceContexts.Pop(true);
+			}
+
 			if (err == JsErrorScriptException)
 			{
 				JsValueRef exception = JS_INVALID_REFERENCE;
 				JsCheck(JsGetAndClearException(&exception));
 
+				JsValueRef global = JS_INVALID_REFERENCE;
+				JsCheck(JsGetGlobalObject(&global));
+				chakra::SetProperty(global, "__err", exception);
+
 				JsValueRef stackValue = chakra::GetProperty(exception, "stack");
 				JsCheck(JsConvertValueToString(exception, &exception));
 
+				//FString strErr = chakra::StringFromChakra(exception);
+				JsCheck(JsRun(chakra::String("JSON.stringify(__err)"), SourceContext, chakra::String("(inline)"), JsParseScriptAttributeNone, &stackValue));
 				FString strErr = chakra::StringFromChakra(exception);
 				FString stack = chakra::StringFromChakra(stackValue);
 				UncaughtException(strErr + " " + stack);
@@ -2473,7 +2490,7 @@ global.__export = main;
 				check(record != JS_INVALID_REFERENCE);
 				FTCHARToUTF8 script(*Script);
 				JsValueRef exception = JS_INVALID_REFERENCE;
-				JsParseModuleSource(record, ModuleSourceContext++, (BYTE*)script.Get(), script.Length(), JsParseModuleSourceFlags_DataIsUTF8, &exception);
+				//JsParseModuleSource(record, ModuleSourceContext++, (BYTE*)script.Get(), script.Length(), JsParseModuleSourceFlags_DataIsUTF8, &exception);
 			}
 		}
 	}
@@ -3786,7 +3803,7 @@ global.__export = main;
 				// The rest arguments are being passed like normal function call.
 				else if (ArgIndex < argumentCount)
 				{
-					return arguments[ArgIndex];
+					return arguments[ArgIndex-1];
 				}					
 				else
 				{
@@ -3799,7 +3816,8 @@ global.__export = main;
 		JsValueRef function = chakra::FunctionTemplate(FunctionBody, FunctionToExport);
 		
 		// Register the function to prototype template
-		chakra::SetProperty(Template, function_name, function);
+		JsValueRef templateProto = chakra::GetProperty(Template, "prototype");
+		chakra::SetProperty(templateProto, function_name, function);
 	}
 
 	void ExportBlueprintLibraryFactoryFunction(JsValueRef Template, UFunction* FunctionToExport)
@@ -4105,7 +4123,8 @@ global.__export = main;
 			return chakra::Undefined();
 		};
 
-		chakra::SetProperty(Template, "get", chakra::FunctionTemplate(fn));
+		JsValueRef templateProto = chakra::GetProperty(Template, "prototype");
+		chakra::SetProperty(templateProto, "get", chakra::FunctionTemplate(fn));
 	}
 
 	void AddMemberFunction_Struct_clone(JsValueRef Template, UStruct* StructToExport)
@@ -4123,7 +4142,8 @@ global.__export = main;
 			return chakra::Undefined();
 		};
 
-		chakra::SetProperty(Template, "clone", chakra::FunctionTemplate(fn));
+		JsValueRef templateProto = chakra::GetProperty(Template, "prototype");
+		chakra::SetProperty(templateProto, "clone", chakra::FunctionTemplate(fn));
 	}
 
 	template <typename PropertyAccessor>
