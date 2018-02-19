@@ -1831,16 +1831,18 @@ public:
 	{
 		FContextScope scope(context());
 
-		JsModuleRecord RootModule = JS_INVALID_REFERENCE;
-		JsCheck(JsInitializeModuleRecord(nullptr, nullptr, &RootModule));
-		JsCheck(InitializeModuleInfo(nullptr, RootModule));
-		return;
-
-		auto fn = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+		auto requireImpl = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
 			if (argumentCount != 2 || !chakra::IsString(arguments[1]))
 			{
 				return chakra::Undefined();
 			}
+
+			JsValueRef strCallee;
+			JsCheck(JsConvertValueToString(callee, &strCallee));
+
+			JsValueType calleeType;
+			JsCheck(JsGetValueType(callee, &calleeType));
+			UE_LOG(Javascript, Log, TEXT("callee: %s, type: %d"), *chakra::StringFromChakra(strCallee), int(calleeType));
 
 			FJavascriptContextImplementation* Self = reinterpret_cast<FJavascriptContextImplementation*>(callbackState);
 			FContextScope scope(Self->context());
@@ -1866,7 +1868,7 @@ public:
 				FString Text;
 				if (FFileHelper::LoadFileToString(Text, *script_path))
 				{
-					Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports; (function () { %s\n })()\n;return module.exports;}(this,'%s', '%s'));"), *Text, *script_path, *FPaths::GetPath(script_path));
+					Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports; (function () { %s\n })();\nreturn module.exports;})(this,'%s', '%s');"), *Text, *script_path, *FPaths::GetPath(script_path));
 					JsValueRef exports = Self->RunScript(full_path, Text, false);
 					if (chakra::IsEmpty(exports))
 					{
@@ -2009,23 +2011,29 @@ public:
 				return Dirs;
 			};
 
-			//auto current_script_path = FPaths::GetPath(chakra::StringFromChakra(StackTrace::CurrentStackTrace(isolate, 1, StackTrace::kScriptName)->GetFrame(0)->GetScriptName()));
-			//current_script_path = URLToLocalPath(current_script_path);
+			JsValueRef ret = JS_INVALID_REFERENCE;
+			JsCheck(JsRun(chakra::String(TEXT("new Error().stack")), GetSelf()->ModuleSourceContext-1, chakra::String(""), JsParseScriptAttributeNone, &ret));
 
-			//if (!(required_module[0] == '.' && inner2(current_script_path)))
-			//{
-			//	for (const auto& path : load_module_paths(current_script_path))
-			//	{
-			//		if (inner2(path)) break;
-			//		if (inner2(path / TEXT("node_modules"))) break;
-			//	}
+			FString stack = chakra::StringFromChakra(ret);
+			JsCheck(JsRun(chakra::String(TEXT(R"raw(/\((file:\/\/\/.*):\d+:\d+\)/.exec(new Error().stack.split('\n')[1])[1])raw")), GetSelf()->ModuleSourceContext-1, chakra::String(""), JsParseScriptAttributeNone, &ret));
 
-			//	for (const auto& path : Self->Paths)
-			//	{
-			//		if (inner2(path)) break;
-			//		if (inner2(path / TEXT("node_modules"))) break;
-			//	}
-			//}
+			FString current_script_path = chakra::StringFromChakra(ret);
+			current_script_path = FPaths::GetPath(URLToLocalPath(current_script_path));
+
+			if (!(required_module[0] == '.' && inner2(current_script_path)))
+			{
+				for (const auto& path : load_module_paths(current_script_path))
+				{
+					if (inner2(path)) break;
+					if (inner2(path / TEXT("node_modules"))) break;
+				}
+
+				for (const auto& path : Self->Paths)
+				{
+					if (inner2(path)) break;
+					if (inner2(path / TEXT("node_modules"))) break;
+				}
+			}
 
 			if (!found)
 			{
@@ -2046,7 +2054,7 @@ public:
 		JsValueRef global = JS_INVALID_REFERENCE;
 		JsCheck(JsGetGlobalObject(&global));
 
-		chakra::SetProperty(global, "require", chakra::FunctionTemplate(fn, this));
+		chakra::SetProperty(global, "require", chakra::FunctionTemplate(requireImpl, this));
 		chakra::SetProperty(global, "purge_modules", chakra::FunctionTemplate(fn2, this));
 
 		auto getter = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
@@ -2253,9 +2261,11 @@ public:
 		FString Script = ReadScriptFile(Filename);
 
 		FString ScriptPath = GetScriptFileFullPath(Filename);
+
 		//FString Text = FString::Printf(TEXT("(function (global,__filename,__dirname) { %s\n;}(this,'%s','%s'));"), *Script, *ScriptPath, *FPaths::GetPath(ScriptPath));
 		//return RunScript(ScriptPath, Text, 0);
-		return RunScript(ScriptPath, Script, true);
+		//return RunScript(ScriptPath, Script, true);
+		return RunScript(ScriptPath, Script, false);
 	}
 
 	void Public_RunFile(const FString& Filename)
@@ -2342,20 +2352,32 @@ global.__export = main;
 		else
 		{
 			JsValueRef script = chakra::String(Script);
-			JsErrorCode err = JsRun(script, 0, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributeNone, &returnValue);
+			JsErrorCode err = JsRun(script, ModuleSourceContext++, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributes::JsParseScriptAttributeLibraryCode, &returnValue);
 			if (err == JsErrorScriptException)
 			{
 				JsValueRef exception = JS_INVALID_REFERENCE;
 				JsCheck(JsGetAndClearException(&exception));
 
-				FString strErr = chakra::StringFromChakra(chakra::GetProperty(exception, "stack"));
-				UncaughtException(strErr);
+				JsValueRef stackValue = chakra::GetProperty(exception, "stack");
+				JsCheck(JsConvertValueToString(exception, &exception));
+
+				FString strErr = chakra::StringFromChakra(exception);
+				FString stack = chakra::StringFromChakra(stackValue);
+				UncaughtException(strErr + " " + stack);
 				return JS_INVALID_REFERENCE;
 			}
 
 			if (err == JsErrorScriptCompile)
 			{
 				UncaughtException("Invalid command");
+
+				JsValueRef exception = JS_INVALID_REFERENCE;
+				JsCheck(JsGetAndClearException(&exception));
+
+				JsValueRef strErr = JS_INVALID_REFERENCE;
+				JsCheck(JsConvertValueToString(exception, &strErr));
+
+				UncaughtException(chakra::StringFromChakra(strErr));
 				return JS_INVALID_REFERENCE;
 			}
 
@@ -2514,8 +2536,6 @@ global.__export = main;
 		auto guard_post = [&] { w.push(" } catch (e) {};\n"); };
 
 		// export
-		w.push("export default () => {\n");
-
 		for (auto it = ClassToFunctionTemplateMap.CreateConstIterator(); it; ++it)
 		{
 			const UClass* ClassToExport = it.Key();
@@ -2684,8 +2704,6 @@ global.__export = main;
 				conditional_emit_alias(Function);
 			}
 		}
-
-		w.push("};");
 
 		return FFileHelper::SaveStringToFile(*w, *Filename);
 #else

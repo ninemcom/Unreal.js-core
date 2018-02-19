@@ -330,28 +330,28 @@ public:
 	static void SetRootComponent(AActor* Actor, USceneComponent* Component);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
-	static int32 GetFileSize(UObject* Object, FString Filename);
+	static int32 GetFileSize(FString Filename);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
-	static bool ReadFile(UObject* Object, FString Filename);
+	static bool ReadFile(FString Filename);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
-	static bool WriteFile(UObject* Object, FString Filename);
+	static bool WriteFile(FString Filename);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
-	static FString ReadStringFromFile(UObject* Object, FString Filename);
+	static FString ReadStringFromFile(FString Filename);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
-	static bool WriteStringToFile(UObject* Object, FString Filename, const FString& Data);
+	static bool WriteStringToFile(FString Filename, const FString& Data);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
-	static FString GetDir(UObject* Object, FString WhichDir);
+	static FString GetDir(FString WhichDir);
 		
 	UFUNCTION(BlueprintCallable, Category = "Javascript | Editor")
 	static bool HasUndo(UEngine* Engine);
 
 	UFUNCTION(BlueprintCallable, Category = "Javascript | Editor")
-	static bool ReadDirectory(UObject* Object, FString Directory, TArray<FDirectoryItem>& OutItems);
+	static bool ReadDirectory(FString Directory, TArray<FDirectoryItem>& OutItems);
 
 	UFUNCTION(BlueprintCallable, Category = "Javascript | Editor")
 	static void ReregisterComponent(UActorComponent* ActorComponent);
