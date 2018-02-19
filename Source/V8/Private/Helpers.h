@@ -2,35 +2,8 @@
 
 #include "Translator.h"
 
-#define JsCheck(expression) chakra::Check(expression)
-
 namespace chakra
 {
-	static void Check(JsErrorCode error)
-	{
-#if DO_CHECK
-		if (error == JsNoError)
-			return;
-
-		if (error == JsErrorScriptException || error == JsErrorScriptCompile)
-		{
-			JsValueRef exception = JS_INVALID_REFERENCE;
-			JsCheck(JsGetAndClearException(&exception));
-			JsCheck(JsConvertValueToString(exception, &exception));
-
-			char buffer[0x1000]; size_t strlen = 0;
-			JsCheck(JsCopyString(exception, buffer, sizeof(buffer), &strlen));
-			buffer[strlen] = '\0';
-
-			FString errStr = UTF8_TO_TCHAR(buffer);
-			checkf(false, *errStr);
-			return;
-		}
-
-		check(false);
-#endif
-	}
-
 	static JsValueRef Undefined()
 	{
 		JsValueRef undefined = JS_INVALID_REFERENCE;

@@ -1,7 +1,34 @@
 #include "Translator.h"
+#include "Helpers.h"
 
 namespace chakra
 {
+	void Check(JsErrorCode error)
+	{
+#if DO_CHECK
+		if (error == JsNoError)
+			return;
+
+		if (error == JsErrorScriptException || error == JsErrorScriptCompile)
+		{
+			JsValueRef exception = JS_INVALID_REFERENCE;
+			JsCheck(JsGetAndClearException(&exception));
+			JsCheck(JsConvertValueToString(exception, &exception));
+
+			char buffer[0x1000]; size_t strlen = 0;
+			JsCheck(JsCopyString(exception, buffer, sizeof(buffer), &strlen));
+			buffer[strlen] = '\0';
+
+			FString errStr = UTF8_TO_TCHAR(buffer);
+			checkf(false, *errStr);
+			return;
+		}
+
+		check(false);
+#endif
+	}
+
+
 	UObject* UObjectFromChakra(JsValueRef Value)
 	{
 		uint8* Memory = RawMemoryFromChakra(Value);
@@ -19,65 +46,38 @@ namespace chakra
 
 	uint8* RawMemoryFromChakra(JsValueRef Value)
 	{
-		if (Value == JS_INVALID_REFERENCE)
-			return nullptr;
-
-		JsValueType type;
-		JsErrorCode err = JsGetValueType(Value, &type);
-		check(err == JsNoError);
-
-		if (type != JsObject)
-			return nullptr;
-
-		JsPropertyIdRef selfProp;
-		err = JsCreatePropertyId("__self", 6, &selfProp);
-		check(err == JsNoError);
-
-		JsValueRef self = JS_INVALID_REFERENCE;
-		err = JsGetProperty(Value, selfProp, &self);
-		check(err == JsNoError);
-
-		bool hasExternalData;
-		err = JsHasExternalData(self, &hasExternalData);
-		check(err == JsNoError);
-		if (!hasExternalData)
+		if (chakra::IsEmpty(Value) || !chakra::IsObject(Value))
 			return nullptr;
 
 		void* dataPtr = nullptr;
-		JsGetExternalData(self, &dataPtr);
+		JsCheck(JsGetExternalData(chakra::GetProperty(Value, "__self"), &dataPtr));
 
 		return reinterpret_cast<uint8*>(dataPtr);		
 	}
 
 	UClass* UClassFromChakra(JsValueRef Value)
 	{
-		if (Value == JS_INVALID_REFERENCE)
+		if (chakra::IsEmpty(Value))
 			return nullptr;
 
 		JsValueType type;
-		if (JsGetValueType(Value, &type) != JsNoError)
-			return nullptr;
-
-		if (type == JsUndefined || type == JsNull)
-			return nullptr;
+		JsCheck(JsGetValueType(Value, &type));
 
 		if (type == JsFunction)
 		{
 			JsPropertyIdRef staticClass = JS_INVALID_REFERENCE;
-			JsCreatePropertyId("StaticClass", 11, &staticClass);
-			JsGetProperty(Value, staticClass, &Value);
+			JsCheck(JsCreatePropertyId("StaticClass", 11, &staticClass));
+			JsCheck(JsGetProperty(Value, staticClass, &Value));
 		}
 
 		bool isExternal = false;
-		if (Value != JS_INVALID_REFERENCE && JsHasExternalData(Value, &isExternal) == JsNoError && isExternal)
-		{
-			UClass* Class = nullptr;
-			JsGetExternalData(Value, reinterpret_cast<void**>(&Class));
+		if (chakra::IsEmpty(Value) || !chakra::IsExternal(Value))
+			return nullptr;
 
-			return Class;
-		}
+		UClass* Class = nullptr;
+		JsCheck(JsGetExternalData(Value, reinterpret_cast<void**>(&Class)));
 
-		return nullptr;
+		return Class;
 	}
 
 	FString StringFromChakra(JsValueRef Value)
@@ -122,7 +122,7 @@ namespace chakra
 		for (unsigned int Index = StartIndex; Index < nargs; Index++)
 		{
 			JsValueRef stringified = JS_INVALID_REFERENCE;
-			JsConvertValueToString(args[Index], &stringified);
+			JsCheck(JsConvertValueToString(args[Index], &stringified));
 
 			ArgStrings.Add(StringFromChakra(stringified));
 		}

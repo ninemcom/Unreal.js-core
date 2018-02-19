@@ -1,6 +1,8 @@
 #pragma once
 #include "V8PCH.h"
 
+#define JsCheck(expression) chakra::Check(expression)
+
 enum class EPropertyOwner
 {
 	None,
@@ -32,4 +34,5 @@ namespace chakra
 	UObject* UObjectFromChakra(JsValueRef Value);
 	uint8* RawMemoryFromChakra(JsValueRef Value);
 	FString StringFromArgs(const JsValueRef* args, unsigned short nargs, int StartIndex = 0);
+	void Check(JsErrorCode Error);
 }
