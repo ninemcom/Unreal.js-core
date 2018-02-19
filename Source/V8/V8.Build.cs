@@ -122,7 +122,14 @@ public class V8 : ModuleRules
                 LibrariesPath = Path.Combine(LibrariesPath, "Win32");
             }
 
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "ChakraCore.lib"));
+            if (Target.Configuration == UnrealTargetConfiguration.Debug || Target.Configuration == UnrealTargetConfiguration.DebugGame)
+            {
+                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "Debug", "ChakraCore.lib"));
+            }
+            else
+            {
+                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "Release", "ChakraCore.lib"));
+            }
 
             if (node_version[0] >= 6)
             {
