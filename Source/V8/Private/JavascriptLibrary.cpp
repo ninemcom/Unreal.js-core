@@ -215,14 +215,14 @@ void UJavascriptLibrary::SetRootComponent(AActor* Actor, USceneComponent* Compon
 	Actor->SetRootComponent(Component);
 }
 
-int32 UJavascriptLibrary::GetFileSize(FString Filename)
+int32 UJavascriptLibrary::GetFileSize(UObject* Object, FString Filename)
 {
 	auto size = IFileManager::Get().FileSize(*Filename);
 	if (size > INT_MAX) return -1;
 	return (int32)size;
 }
 
-bool UJavascriptLibrary::ReadFile(FString Filename)
+bool UJavascriptLibrary::ReadFile(UObject* Object, FString Filename)
 {
 	FArchive* Reader = IFileManager::Get().CreateFileReader(*Filename);
 	if (!Reader)
@@ -240,7 +240,7 @@ bool UJavascriptLibrary::ReadFile(FString Filename)
 	return Reader->Close();	
 }
 
-bool UJavascriptLibrary::WriteFile(FString Filename)
+bool UJavascriptLibrary::WriteFile(UObject* Object, FString Filename)
 {
 	FArchive* Writer = IFileManager::Get().CreateFileWriter(*Filename);
 	if (!Writer)
@@ -252,19 +252,19 @@ bool UJavascriptLibrary::WriteFile(FString Filename)
 	return Writer->Close();
 }
 
-FString UJavascriptLibrary::ReadStringFromFile(FString Filename)
+FString UJavascriptLibrary::ReadStringFromFile(UObject* Object, FString Filename)
 {
 	FString Result;
 	FFileHelper::LoadFileToString(Result, *Filename);
 	return Result;
 }
 
-bool UJavascriptLibrary::WriteStringToFile(FString Filename, const FString& Data)
+bool UJavascriptLibrary::WriteStringToFile(UObject* Object, FString Filename, const FString& Data)
 {
 	return FFileHelper::SaveStringToFile(*Data, *Filename, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 }
 
-FString UJavascriptLibrary::GetDir(FString WhichDir)
+FString UJavascriptLibrary::GetDir(UObject* Object, FString WhichDir)
 {
 	if (WhichDir == TEXT("Launch")) return FPaths::LaunchDir();
 	else if (WhichDir == TEXT("Engine")) return FPaths::EngineDir();
@@ -306,7 +306,7 @@ bool UJavascriptLibrary::HasUndo(UEngine* Engine)
 	return !!GUndo;
 }
 
-bool UJavascriptLibrary::ReadDirectory(FString Directory, TArray<FDirectoryItem>& OutItems)
+bool UJavascriptLibrary::ReadDirectory(UObject* Object, FString Directory, TArray<FDirectoryItem>& OutItems)
 {
 	struct FLocalVisitor : IPlatformFile::FDirectoryVisitor
 	{
