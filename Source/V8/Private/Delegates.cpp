@@ -1,8 +1,8 @@
-
 #include "Delegates.h"
 #include "V8PCH.h"
 #include "JavascriptDelegate.h"
 #include "Translator.h"
+#include "Helpers.h"
 #include "JavascriptStats.h"
 #include "UObject/GCObject.h"
 
@@ -13,8 +13,8 @@ class FJavascriptDelegate : public FGCObject, public TSharedFromThis<FJavascript
 public:
 	FWeakObjectPtr WeakObject;
 	UProperty* Property;
-	Persistent<JsValueRef> context_;
-	TMap<int32, JsFunctionRef> functions;
+	Persistent<JsContextRef> context_;
+	TMap<int32, Persistent<JsValueRef>> functions;
 	Persistent<JsValueRef> WrappedObject;
 	int32 NextUniqueId{ 0 };
 	bool bAbandoned{ false };
@@ -54,20 +54,19 @@ public:
 
 	JsValueRef Initialize(JsContextRef context)
 	{
+		context_.Reset(context);
+
 		JsValueRef out = JS_INVALID_REFERENCE;
-		JsCreateObject(&out);
+		JsCheck(JsCreateObject(&out));
 
-		JsNativeFunction add = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
-			FJavascriptDelegate* payload = nullptr;
-			JsGetExternalData(callbackState, (void**)&payload);
-
+		auto add = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
 			for (;;)
 			{
+				auto payload = reinterpret_cast<FJavascriptDelegate*>(callbackState);
 				if (argumentCount == 2)
 				{
-					JsFunctionRef func = arguments[1];
-					JsValueType Type = JsValueType::JsUndefined;
-					if (JsGetValueType(func, &Type) == JsNoError && Type == JsValueType::JsFunction)
+					JsValueRef func = arguments[1];
+					if (!chakra::IsEmpty(func))
 					{
 						payload->Add(func);
 						break;
@@ -78,21 +77,17 @@ public:
 				break;
 			}
 
-			JsValueRef undefined = JS_INVALID_REFERENCE;
-			JsGetUndefinedValue(&undefined);
-			return undefined;
+			return chakra::Undefined();
 		};
 
 		auto remove = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
-			FJavascriptDelegate* payload = nullptr;
-			JsGetExternalData(callbackState, (void**)&payload);
 			for (;;)
 			{
+				auto payload = reinterpret_cast<FJavascriptDelegate*>(callbackState);
 				if (argumentCount == 2)
 				{
-					JsFunctionRef func = arguments[1];
-					JsValueType Type = JsValueType::JsUndefined;
-					if (JsGetValueType(func, &Type) == JsNoError && Type == JsValueType::JsFunction)
+					JsValueRef func = arguments[1];
+					if (!chakra::IsEmpty(func))
 					{
 						payload->Remove(func);
 						break;
@@ -103,80 +98,57 @@ public:
 				break;
 			}
 
-			JsValueRef undefined = JS_INVALID_REFERENCE;
-			JsGetUndefinedValue(&undefined);
-			return undefined;
+			return chakra::Undefined();
 		};
 
 		auto clear = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
-			FJavascriptDelegate* payload = nullptr;
-			JsGetExternalData(callbackState, (void**)&payload);
-			payload->Clear();			
-
-			JsValueRef undefined = JS_INVALID_REFERENCE;
-			JsGetUndefinedValue(&undefined);
-			return undefined;
+			auto payload = reinterpret_cast<FJavascriptDelegate*>(callbackState);
+			payload->Clear();
+			return chakra::Undefined();
 		};
 
 		auto toJSON = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
-			FJavascriptDelegate* payload = nullptr;
-			JsGetExternalData(callbackState, (void**)&payload);
-			const bool bIsMulticastDelegate = payload->Property->IsA(UMulticastDelegateProperty::StaticClass());
+			auto payload = reinterpret_cast<FJavascriptDelegate*>(callbackState);
 
 			uint32_t Index = 0;
 			JsValueRef arr = JS_INVALID_REFERENCE;
-			JsCreateArray(payload->DelegateObjects.Num(), &arr);
+			JsCheck(JsCreateArray(payload->DelegateObjects.Num(), &arr));
+			const bool bIsMulticastDelegate = payload->Property->IsA(UMulticastDelegateProperty::StaticClass());
 
 			for (auto DelegateObject : payload->DelegateObjects)
 			{
 				auto JavascriptFunction = payload->functions.Find(DelegateObject->UniqueId);
 				if (JavascriptFunction)
 				{
+					JsValueRef function = JavascriptFunction->Get();
 					if (!bIsMulticastDelegate)
-						return *JavascriptFunction;
-					
-					//arr->Set(Index++, function);
-					JsValueRef index = JS_INVALID_REFERENCE;
-					JsIntToNumber(Index++, &index);
-					JsSetIndexedProperty(arr, index, JavascriptFunction);
+					{
+						return function;
+					}
+
+					chakra::SetIndex(arr, Index++, function);
 				}
 			}
 
 			if (!bIsMulticastDelegate)
 			{
-				JsValueRef nullValue = JS_INVALID_REFERENCE;
-				JsGetNullValue(&nullValue);
-				return nullValue;
+				return chakra::Null();
 			}
-
-			return arr;
+			else
+			{
+				return arr;
+			}
 		};
 
-		JsPropertyIdRef addProp = JS_INVALID_REFERENCE;
-		JsFunctionRef addFunc = JS_INVALID_REFERENCE;
-		JsCreateFunction(add, this, &addFunc);
-		JsCreatePropertyId("Add", FCStringAnsi::Strlen("Add"), &addProp);
-		JsSetProperty(out, addProp, addFunc, true);
+		JsValueRef data = chakra::External(this, nullptr);
 
-		JsPropertyIdRef removeProp = JS_INVALID_REFERENCE;
-		JsFunctionRef removeFunc = JS_INVALID_REFERENCE;
-		JsCreateFunction(remove, this, &removeFunc);
-		JsCreatePropertyId("Remove", FCStringAnsi::Strlen("Remove"), &removeProp);
-		JsSetProperty(out, removeProp, removeFunc, true);
-
-		JsPropertyIdRef clearProp = JS_INVALID_REFERENCE;
-		JsFunctionRef clearFunc = JS_INVALID_REFERENCE;
-		JsCreateFunction(clear, this, &clearFunc);
-		JsCreatePropertyId("Clear", FCStringAnsi::Strlen("Clear"), &clearProp);
-		JsSetProperty(out, clearProp, clearFunc, true);
-
-		JsPropertyIdRef toJSONProp = JS_INVALID_REFERENCE;
-		JsFunctionRef toJSONFunc = JS_INVALID_REFERENCE;
-		JsCreateFunction(toJSON, this, &toJSONFunc);
-		JsCreatePropertyId("toJSON", FCStringAnsi::Strlen("toJSON"), &toJSONProp);
-		JsSetProperty(out, toJSONProp, toJSONFunc, true);
+		chakra::SetProperty(out, "Add", chakra::FunctionTemplate(add, this));
+		chakra::SetProperty(out, "Remove", chakra::FunctionTemplate(remove, this));
+		chakra::SetProperty(out, "Clear", chakra::FunctionTemplate(clear, this));
+		chakra::SetProperty(out, "toJSON", chakra::FunctionTemplate(toJSON, this));
 
 		WrappedObject.Reset(out);
+
 		return out;
 	}
 
@@ -192,7 +164,7 @@ public:
 		functions.Empty();
 	}
 
-	void Add(JsFunctionRef function)
+	void Add(JsValueRef function)
 	{
 		auto DelegateObject = NewObject<UJavascriptDelegate>();
 
@@ -201,14 +173,12 @@ public:
 		Bind(DelegateObject, function);
 	}
 
-	UJavascriptDelegate* FindJavascriptDelegateByFunction(JsFunctionRef function)
+	UJavascriptDelegate* FindJavascriptDelegateByFunction(JsValueRef function)
 	{
-		//HandleScope handle_scope(isolate_);
-
 		bool bWasSuccessful = false;
 		for (auto it = functions.CreateIterator(); it; ++it)
 		{
-			if (it.Value() == function)
+			if (it.Value().Get() == function)
 			{
 				for (auto obj : DelegateObjects)
 				{
@@ -223,7 +193,7 @@ public:
 		return nullptr;
 	}
 
-	void Remove(JsFunctionRef function)
+	void Remove(JsValueRef function)
 	{
 		auto obj = FindJavascriptDelegateByFunction(function);
 
@@ -245,7 +215,7 @@ public:
 		}
 	}
 
-	void Bind(UJavascriptDelegate* DelegateObject, JsFunctionRef function)
+	void Bind(UJavascriptDelegate* DelegateObject, JsValueRef function)
 	{
 		static FName NAME_Fire("Fire");
 
@@ -332,15 +302,12 @@ public:
 		auto it = functions.Find(Delegate->UniqueId);
 		if (WeakObject.IsValid() && it)
 		{
-			//Isolate::Scope isolate_scope(isolate_);
-			//HandleScope handle_scope(isolate_);
-
-			JsFunctionRef func = *it;
-			if (func != JS_INVALID_REFERENCE)
+			JsValueRef func = it->Get();
+			if (!chakra::IsEmpty(func))
 			{
 				FContextScope Scope(context_.Get());
 				JsValueRef Global = JS_INVALID_REFERENCE;
-				JsGetGlobalObject(&Global);
+				JsCheck(JsGetGlobalObject(&Global));
 
 				chakra::CallJavascriptFunction(context_.Get(), Global, GetSignatureFunction(), func, Parms);
 			}
@@ -382,13 +349,15 @@ struct FDelegateManager : chakra::IDelegateManager
 		Delegates.Empty();
 	}
 
-	JsValueRef CreateDelegate(JsContextRef Context, UObject* Object, UProperty* Property)
+	JsValueRef CreateDelegate(UObject* Object, UProperty* Property)
 	{
 		//@HACK
 		CollectGarbageDelegates();
 
 		TSharedPtr<FJavascriptDelegate> payload = MakeShareable(new FJavascriptDelegate(Object, Property));
-		auto created = payload->Initialize(Context);
+		JsContextRef context = JS_INVALID_REFERENCE;
+		JsCheck(JsGetCurrentContext(&context));
+		JsValueRef created = payload->Initialize(context);
 
 		Delegates.Add(payload);
 
@@ -397,25 +366,19 @@ struct FDelegateManager : chakra::IDelegateManager
 
 	virtual JsValueRef GetProxy(JsValueRef This, UObject* Object, UProperty* Property) override
 	{
-		JsValueRef cached = JS_INVALID_REFERENCE;
-		JsPropertyIdRef cachedProp = JS_INVALID_REFERENCE;
-		FTCHARToUTF8 cachedId (*FString::Printf(TEXT("$internal_%s"), *(Property->GetName())));
-		JsCreatePropertyId(cachedId.Get(), cachedId.Length(), &cachedProp);
-		JsGetProperty(This, cachedProp, &cached);
-
-		JsValueType Type = JsValueType::JsUndefined;
-		if (cached == JS_INVALID_REFERENCE || JsGetValueType(This, &Type) != JsNoError || Type == JsUndefined)
+		FString cache_id = FString::Printf(TEXT("$internal_%s"), *(Property->GetName()));
+		JsValueRef cached = chakra::GetProperty(This, cache_id);
+		if (chakra::IsEmpty(cached) || chakra::IsUndefined(cached))
 		{
-			JsContextRef Context = JS_INVALID_REFERENCE;
-			JsErrorCode err = JsGetContextOfObject(This, &Context);
-			check(err == JsNoError);
+			JsValueRef created = CreateDelegate(Object, Property);
 
-			auto created = CreateDelegate(Context, Object, Property);
-			JsSetProperty(This, cachedProp, created, true);
+			chakra::SetProperty(This, cache_id, created);
 			return created;
 		}
-
-		return cached;
+		else
+		{
+			return cached;
+		}
 	}
 };
 
