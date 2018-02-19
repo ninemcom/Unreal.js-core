@@ -118,25 +118,6 @@ namespace chakra
 		return instance;
 	}
 
-	static void Inherit(JsFunctionRef Template, JsFunctionRef ParentTemplate)
-	{
-		// simple inheritance using prototype
-		// function parent() {}
-		// function child() {}
-		// child.prototype = Object.create(parent.prototype);
-
-		// NOTE:
-		// Object.create = function (o) {
-		//     function F() {}
-		//     F.prototype = o;
-		//     return new F();
-		// };
-
-		JsFunctionRef prototypeClass = FunctionTemplate();
-		JsCheck(JsSetPrototype(prototypeClass, ParentTemplate));
-		JsCheck(JsSetPrototype(Template, New(prototypeClass)));
-	}
-
 	static bool IsObject(JsValueRef Value)
 	{
 		if (Value == JS_INVALID_REFERENCE)
@@ -376,6 +357,40 @@ namespace chakra
 			bool ret = false;
 			JsCheck(JsDefineProperty(Value, PropertyID(PropertyName), AccessorDesc, &ret));
 		}
+	}
+
+	static void Inherit(JsFunctionRef Template, JsFunctionRef ParentTemplate)
+	{
+		// simple inheritance using prototype
+		// function parent() {}
+		// function child() {}
+		// child.prototype = Object.create(parent.prototype);
+
+		// NOTE:
+		// Object.create = function (o) {
+		//     function F() {}
+		//     F.prototype = o;
+		//     return new F();
+		// };
+		// child.prototype.__proto__ = parent
+
+		JsCheck(JsSetPrototype(GetProperty(Template, "prototype"), ParentTemplate));
+		//JsFunctionRef prototypeClass = FunctionTemplate();
+		//SetProperty(prototypeClass, "prototype", ParentTemplate);
+
+		//JsValueRef prototype = New(prototypeClass);
+		//JsValueRef oldPrototype = GetProperty(Template, "prototype");
+		//JsValueRef propKeys = JS_INVALID_REFERENCE;
+		//JsCheck(JsGetOwnPropertyNames(oldPrototype, &propKeys));
+
+		//int len = Length(propKeys);
+		//for (int i = 0; i < len; i++)
+		//{
+		//	FString key = chakra::StringFromChakra(GetIndex(propKeys, i));
+		//	SetProperty(prototype, key, GetProperty(oldPrototype, key));
+		//}
+
+		//SetProperty(Template, "prototype", New(prototypeClass));
 	}
 
 	static JsContextRef CurrentContext()
