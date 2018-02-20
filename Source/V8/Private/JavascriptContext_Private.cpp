@@ -865,6 +865,7 @@ class FJavascriptContextImplementation : public FJavascriptContext
 	// Allocator instance should be set for V8's ArrayBuffer's
 	//FMallocArrayBufferAllocator AllocatorInstance;
 
+	bool bGCRequested;
 	FTickerDelegate TickDelegate;
 	FDelegateHandle TickHandle;
 	TArray<JsValueRef> PromiseTasks;
@@ -1098,6 +1099,7 @@ public:
 
 	FJavascriptContextImplementation(JsRuntimeHandle InRuntime, TArray<FString>& InPaths)
 		: Paths(InPaths)
+		, bGCRequested(false)
 	{
 		check(InRuntime != JS_INVALID_RUNTIME_HANDLE);
 
@@ -1121,8 +1123,6 @@ public:
 		TickHandle = FTicker::GetCoreTicker().AddTicker(TickDelegate);
 
 		ExposeGlobals();
-
-		Paths = IV8::Get().GetGlobalScriptSearchPaths();
 	}
 
 	~FJavascriptContextImplementation()
@@ -2229,6 +2229,17 @@ public:
 		// wait for dynamic import
 		FlushModuleTasks(nullptr);
 
+		// do garbage colliction now
+		if (bGCRequested)
+		{
+			FContextScope scope(context());
+
+			// @todo: using 'ForTesting' function
+			JsRuntimeHandle runtime = JS_INVALID_RUNTIME_HANDLE;
+			JsCheck(JsGetRuntime(context(), &runtime));
+			JsCheck(JsCollectGarbage(runtime));
+		}
+
 		return true;
 	}
 
@@ -2297,10 +2308,7 @@ public:
 
 	void RequestV8GarbageCollection()
 	{
-		// @todo: using 'ForTesting' function
-		JsRuntimeHandle runtime = JS_INVALID_RUNTIME_HANDLE;
-		JsCheck(JsGetRuntime(context(), &runtime));
-		JsCheck(JsCollectGarbage(runtime));
+		bGCRequested = true;
 	}
 
 	// Should be guarded with proper handle scope
@@ -2369,15 +2377,9 @@ global.__export = main;
 				JsValueRef exception = JS_INVALID_REFERENCE;
 				JsCheck(JsGetAndClearException(&exception));
 
-				JsValueRef global = JS_INVALID_REFERENCE;
-				JsCheck(JsGetGlobalObject(&global));
-				chakra::SetProperty(global, "__err", exception);
-
 				JsValueRef stackValue = chakra::GetProperty(exception, "stack");
 				JsCheck(JsConvertValueToString(exception, &exception));
 
-				//FString strErr = chakra::StringFromChakra(exception);
-				JsCheck(JsRun(chakra::String("JSON.stringify(__err)"), SourceContext, chakra::String("(inline)"), JsParseScriptAttributeNone, &stackValue));
 				FString strErr = chakra::StringFromChakra(exception);
 				FString stack = chakra::StringFromChakra(stackValue);
 				UncaughtException(strErr + " " + stack);
@@ -3785,7 +3787,7 @@ global.__export = main;
 		auto FunctionBody = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 		{
 			// arguments[0].prototype is Holder
-			JsValueRef self = chakra::GetPrototype(arguments[0]);
+			JsValueRef self = arguments[0];
 
 			// Retrieve "FUNCTION"
 			UFunction* Function = reinterpret_cast<UFunction*>(callbackState);
@@ -3803,7 +3805,7 @@ global.__export = main;
 				// The rest arguments are being passed like normal function call.
 				else if (ArgIndex < argumentCount)
 				{
-					return arguments[ArgIndex-1];
+					return arguments[ArgIndex];
 				}					
 				else
 				{
@@ -3818,6 +3820,12 @@ global.__export = main;
 		// Register the function to prototype template
 		JsValueRef templateProto = chakra::GetProperty(Template, "prototype");
 		chakra::SetProperty(templateProto, function_name, function);
+
+		if (FunctionToExport->GetName() == TEXT("GetPathName"))
+		{
+			FunctionToExport = FunctionToExport;
+		}
+
 	}
 
 	void ExportBlueprintLibraryFactoryFunction(JsValueRef Template, UFunction* FunctionToExport)
@@ -3825,7 +3833,7 @@ global.__export = main;
 		// Exposed function body (it doesn't capture anything)
 		auto FunctionBody = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState)
 		{
-			JsValueRef self = chakra::GetPrototype(arguments[0]);
+			JsValueRef self = arguments[0];
 
 			// Retrieve "FUNCTION"
 			UFunction* Function = reinterpret_cast<UFunction*>(callbackState);
@@ -3836,9 +3844,9 @@ global.__export = main;
 			// Call unreal engine function!
 			return CallFunction(self, Function, Object, [&](int ArgIndex) {
 				// pass an argument if we have
-				if (ArgIndex < argumentCount-1)
+				if (ArgIndex < argumentCount)
 				{
-					return arguments[ArgIndex+1];
+					return arguments[ArgIndex];
 				}
 				// Otherwise, just return undefined.
 				else
@@ -4833,8 +4841,8 @@ FJavascriptContext* FJavascriptContext::Create(JsRuntimeHandle InRuntime, TArray
 
 inline void FJavascriptContextImplementation::AddReferencedObjects(UObject * InThis, FReferenceCollector & Collector)
 {
-	FContextScope scope(context());
-	RequestV8GarbageCollection();
+	//FContextScope scope(context());
+	RequestV8GarbageCollection(); // just mark
 
 	// All objects
 	for (auto It = ObjectToObjectMap.CreateIterator(); It; ++It)

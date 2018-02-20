@@ -47,6 +47,7 @@ UJavascriptContext::UJavascriptContext(const FObjectInitializer& ObjectInitializ
 	const bool bIsClassDefaultObject = IsTemplate(RF_ClassDefaultObject);
 	if (!bIsClassDefaultObject)
 	{
+		Paths = IV8::Get().GetGlobalScriptSearchPaths();
 		JavascriptContext = TSharedPtr<FJavascriptContext>(FJavascriptContext::Create(reinterpret_cast<JsRuntimeHandle>(IV8::Get().GetRuntime()), Paths));
 
 		Expose("Context", this);
