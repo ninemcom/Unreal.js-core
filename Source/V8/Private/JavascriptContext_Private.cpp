@@ -1839,7 +1839,7 @@ public:
 		FContextScope scope(context());
 
 		auto requireImpl = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
-			if (argumentCount != 2 || !chakra::IsString(arguments[1]))
+			if (argumentCount != 3 || !chakra::IsString(arguments[1]) || !chakra::IsString(arguments[2]))
 			{
 				return chakra::Undefined();
 			}
@@ -1847,7 +1847,8 @@ public:
 			FJavascriptContextImplementation* Self = reinterpret_cast<FJavascriptContextImplementation*>(callbackState);
 			FContextScope scope(Self->context());
 
-			FString required_module = chakra::StringFromChakra(arguments[1]);
+			FString current_script = chakra::StringFromChakra(arguments[1]);
+			FString required_module = chakra::StringFromChakra(arguments[2]);
 
 			bool found = false;
 
@@ -1869,7 +1870,7 @@ public:
 				FString Text;
 				if (FFileHelper::LoadFileToString(Text, *script_path))
 				{
-					Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports; (function () { %s\n })();\nreturn module.exports;})(this,'%s', '%s');"), *Text, *script_path, *FPaths::GetPath(script_path));
+					Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports, require = specifier => global.require(__filename, specifier); (function () { %s\n })();\nreturn module.exports;})(this,'%s', '%s');"), *Text, *script_path, *FPaths::GetPath(script_path));
 					JsValueRef exports = Self->RunScript(full_path, Text, false);
 					if (chakra::IsEmpty(exports))
 					{
@@ -2012,13 +2013,6 @@ public:
 				return Dirs;
 			};
 
-			JsValueRef ret = JS_INVALID_REFERENCE;
-			JsCheck(JsRun(chakra::String(TEXT("new Error().stack")), GetSelf()->LastModuleSourceContext(), chakra::String(""), JsParseScriptAttributeNone, &ret));
-
-			FString stack = chakra::StringFromChakra(ret);
-			JsCheck(JsRun(chakra::String(TEXT(R"raw(/\((file:\/\/\/.*):\d+:\d+\)/.exec(new Error().stack.split('\n')[1])[1])raw")), GetSelf()->LastModuleSourceContext(), chakra::String(""), JsParseScriptAttributeNone, &ret));
-
-			FString current_script = chakra::StringFromChakra(ret);
 			FString current_script_path = FPaths::GetPath(URLToLocalPath(current_script));
 
 			if (!(required_module[0] == '.' && inner2(current_script_path)))
@@ -2238,6 +2232,8 @@ public:
 			JsRuntimeHandle runtime = JS_INVALID_RUNTIME_HANDLE;
 			JsCheck(JsGetRuntime(context(), &runtime));
 			JsCheck(JsCollectGarbage(runtime));
+
+			bGCRequested = false;
 		}
 
 		return true;
@@ -2274,10 +2270,8 @@ public:
 
 		FString ScriptPath = GetScriptFileFullPath(Filename);
 
-		//FString Text = FString::Printf(TEXT("(function (global,__filename,__dirname) { %s\n;}(this,'%s','%s'));"), *Script, *ScriptPath, *FPaths::GetPath(ScriptPath));
-		//return RunScript(ScriptPath, Text, 0);
-		//return RunScript(ScriptPath, Script, true);
-		return RunScript(ScriptPath, Script, false);
+		FString Text = FString::Printf(TEXT("(function (global,__filename,__dirname) { var require = specifier => global.require(__filename, specifier); %s;\n})(this,'%s','%s');"), *Script, *ScriptPath, *FPaths::GetPath(ScriptPath));
+		return RunScript(ScriptPath, Text, false);
 	}
 
 	void Public_RunFile(const FString& Filename)
@@ -4638,14 +4632,22 @@ global.__export = main;
 
 	static void FinalizeScriptStruct(JsRef ref, void* data)
 	{
+		auto self = GetSelf();
+		if (self == nullptr)
+			return;
+
 		FStructMemoryInstance* memory = reinterpret_cast<FStructMemoryInstance*>(data);
-		GetSelf()->OnGarbageCollectedByChakra(memory);
+		self->OnGarbageCollectedByChakra(memory);
 	}
 
 	static void FinalizeUObject(JsRef ref, void* data)
 	{
+		auto self = GetSelf();
+		if (self == nullptr)
+			return;
+
 		UObject* memory = reinterpret_cast<UObject*>(data);
-		GetSelf()->OnGarbageCollectedByChakra(memory);
+		self->OnGarbageCollectedByChakra(memory);
 	}
 
 	JsValueRef ExportStructInstance(UScriptStruct* Struct, uint8* Buffer, const IPropertyOwner& Owner)

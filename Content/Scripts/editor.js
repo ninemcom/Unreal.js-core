@@ -1,8 +1,9 @@
 (function (global) {
 	"use strict"
-	
-	let has_module = false
-	try { if (eval("module")) { has_module = true } } catch (e) {}
+
+	let has_module = false;;
+	try {has_module = module !== undefined} catch {};
+
 	if (has_module) {		
 		let _ = require('lodash')
 		let extensions = []
