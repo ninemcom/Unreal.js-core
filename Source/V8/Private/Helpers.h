@@ -268,6 +268,14 @@ namespace chakra
 		return PropID;
 	}
 
+	static JsValueRef GetProperty(JsValueRef Value, const char* Name)
+	{
+		JsValueRef Property = JS_INVALID_REFERENCE;
+		JsCheck(JsGetProperty(Value, PropertyID(Name), &Property));
+
+		return Property;
+	}
+
 	static JsValueRef GetProperty(JsValueRef Value, const FString& Name)
 	{
 		JsValueRef Property = JS_INVALID_REFERENCE;
@@ -276,12 +284,14 @@ namespace chakra
 		return Property;
 	}
 
+	static void SetProperty(JsValueRef Object, const char* Name, JsValueRef Prop)
+	{
+		JsCheck(JsSetProperty(Object, PropertyID(Name), Prop, true));
+	}
+
 	static void SetProperty(JsValueRef Object, const FString& Name, JsValueRef Prop)
 	{
-		JsPropertyIdRef PropID = JS_INVALID_REFERENCE;
-		FTCHARToUTF8 propIDStr(*Name);
-		JsCheck(JsCreatePropertyId(propIDStr.Get(), propIDStr.Length(), &PropID));
-		JsCheck(JsSetProperty(Object, PropID, Prop, true));
+		JsCheck(JsSetProperty(Object, PropertyID(Name), Prop, true));
 	}
 
 	static JsValueRef GetPrototype(JsValueRef Value)
@@ -359,6 +369,22 @@ namespace chakra
 		}
 	}
 
+	static TArray<FString> PropertyNames(JsValueRef Value)
+	{
+		TArray<FString> ret;
+		JsValueRef properties = JS_INVALID_REFERENCE;
+		JsCheck(JsGetOwnPropertyNames(Value, &properties));
+
+		int len = Length(properties);
+		for (int i = 0; i < len; i++)
+		{
+			JsValueRef Name = GetIndex(properties, i);
+			ret.Add(chakra::StringFromChakra(Name));
+		}
+
+		return ret;
+	}
+
 	static void Inherit(JsFunctionRef Template, JsFunctionRef ParentTemplate)
 	{
 		// simple inheritance using prototype
@@ -374,7 +400,7 @@ namespace chakra
 		// };
 		// child.prototype.__proto__ = parent
 
-		JsCheck(JsSetPrototype(GetProperty(Template, "prototype"), ParentTemplate));
+		JsCheck(JsSetPrototype(GetProperty(Template, "prototype"), GetProperty(ParentTemplate, "prototype")));
 		//JsFunctionRef prototypeClass = FunctionTemplate();
 		//SetProperty(prototypeClass, "prototype", ParentTemplate);
 
