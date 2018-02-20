@@ -94,7 +94,7 @@ namespace chakra
 		bool useExtraBuffer = Strlen >= STACK_BUFFER_SIZE;
 		if (useExtraBuffer)
 		{
-			buffer = reinterpret_cast<char*>(FMemory_Alloca(Strlen+1));
+			buffer = reinterpret_cast<char*>(FMemory::Malloc(Strlen+1));
 		}
 
 		err = JsCopyString(Value, buffer, Strlen, &Strlen);
@@ -103,14 +103,14 @@ namespace chakra
 		{
 			check(false);
 			if (useExtraBuffer)
-				delete buffer;
+				FMemory::Free(buffer);
 
 			return FString();
 		}
 
 		FString ret = UTF8_TO_TCHAR(buffer);
 		if (useExtraBuffer)
-			delete buffer;
+			FMemory::Free(buffer);
 
 		return ret;
 	}
