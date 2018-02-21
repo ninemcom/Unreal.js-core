@@ -1,18 +1,14 @@
 (function (global) {
 	"use strict"
 
-	let has_module = false;;
-	try {has_module = module !== undefined} catch {};
-
+	let has_module = false
+	try { has_module = module !== undefined } catch {}
 	if (has_module) {		
 		let _ = require('lodash')
 		let extensions = []
         let root_path = Root.GetDir('GameContent') + 'Scripts'
-        // let root_path = JavascriptLibrary.GetDir('GameContent') + 'Scripts'
 		
 		function read_dir(dir) {
-			console.log('read', dir);
-			//let out = JavascriptLibrary.ReadDirectory(GWorld, dir)
 			let out = Root.ReadDirectory(dir)
 			if (out.$) {				
 				let items = _.filter(out.OutItems,(item) => !item.bIsDirectory && /^((?!node_modules).)*$/.test(item.Name) && /extension[^\.]*\.js$/.test(item.Name))
