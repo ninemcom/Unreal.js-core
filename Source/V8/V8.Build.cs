@@ -149,28 +149,9 @@ public class V8 : ModuleRules
         }
         else if (Target.Platform == UnrealTargetPlatform.Android)
         {
-            string LibrariesPath = Path.Combine(ThirdPartyPath, "v8", "lib", "Android");
-            PublicLibraryPaths.Add(Path.Combine(LibrariesPath, "ARMv7"));
-            PublicLibraryPaths.Add(Path.Combine(LibrariesPath, "ARM64"));
-            PublicLibraryPaths.Add(Path.Combine(LibrariesPath, "x86"));
-            PublicLibraryPaths.Add(Path.Combine(LibrariesPath, "x64"));
+            string LibrariesPath = Path.Combine(ThirdPartyPath, "chakracore", "lib", "Android");
 
-            PublicAdditionalLibraries.Add("v8_base");
-            PublicAdditionalLibraries.Add("v8_libbase");
-            PublicAdditionalLibraries.Add("v8_libplatform");
-            PublicAdditionalLibraries.Add("v8_nosnapshot");
-
-            if (node_version[0] >= 6)
-            {
-                PublicAdditionalLibraries.Add("v8_builtins_setup");
-                PublicAdditionalLibraries.Add("v8_builtins_generators");                
-            }
-
-            if (ShouldLink_libsampler)
-            {
-                PublicAdditionalLibraries.Add("v8_libsampler");
-            }
-
+            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "ARMv7", "libChakraCoreStatic.a"));
             Definitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
 
             return true;

@@ -431,7 +431,7 @@ IJavascriptDebugger* IJavascriptDebugger::Create(int32 InPort, JsContextRef InCo
 	//return new FDebugger(InPort,InContext);
 }
 #else
-IJavascriptDebugger* IJavascriptDebugger::Create(int32 InPort, Local<Context> InContext)
+IJavascriptDebugger* IJavascriptDebugger::Create(int32 InPort, JsContextRef InContext)
 {
 	return nullptr;
 } 
