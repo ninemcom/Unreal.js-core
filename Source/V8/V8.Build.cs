@@ -63,6 +63,7 @@ public class V8 : ModuleRules
         PrivateDependencyModuleNames.AddRange(new string[] 
         { 
             "libWebSockets",
+            "ICU",
         });
 
         HackWebSocketIncludeDir(Target);
@@ -183,7 +184,7 @@ public class V8 : ModuleRules
         }
         else if (Target.Platform == UnrealTargetPlatform.Mac)
         {
-            string LibrariesPath = Path.Combine(ThirdPartyPath, "chakracore", "lib", "Mac", "x64");
+            string LibrariesPath = Path.Combine(ThirdPartyPath, "chakracore", "lib", "Mac");
             PublicLibraryPaths.Add(LibrariesPath);
 
             if (Target.Configuration == UnrealTargetConfiguration.Debug || Target.Configuration == UnrealTargetConfiguration.DebugGame)
@@ -194,24 +195,6 @@ public class V8 : ModuleRules
             {
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libChakraCoreStatic.a"));
             }
-
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libicuuc.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libicudata.a"));
-            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath,"libv8_base.a"));
-            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath,"libv8_libbase.a"));
-            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath,"libv8_libplatform.a"));
-            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath,"libv8_nosnapshot.a"));
-
-            // if (node_version[0] >= 6)
-            // {
-            //     PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_builtins_setup.a"));
-            //     PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_builtins_generators.a"));
-            // }
-
-            // if (ShouldLink_libsampler)
-            // {
-            //     PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libsampler.a"));
-            // }
 
             Definitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
 
