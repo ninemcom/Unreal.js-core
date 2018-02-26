@@ -1021,7 +1021,7 @@ public:
 	};
 
 	int NextModuleSourceContext = 0;
-	TMap<FString, JsModuleRecord> Modules;
+	TMap<FString, Persistent<JsValueRef>> Modules;
 	TArray<FString>& Paths;
 
 	void SetAsDebugContext(int32 InPort)
@@ -1734,7 +1734,7 @@ public:
 				auto it = Self->Modules.Find(full_path);
 				if (it)
 				{
-					returnValue = *it;
+					returnValue = it->Get();
 					found = true;
 					return true;
 				}
@@ -1802,7 +1802,7 @@ public:
 				auto it = Self->Modules.Find(full_path);
 				if (it)
 				{
-					returnValue = *it;
+					returnValue = it->Get();
 					found = true;
 					return true;
 				}
@@ -1934,7 +1934,7 @@ public:
 			for (auto it = Self->Modules.CreateConstIterator(); it; ++it)
 			{
 				const FString& name = it.Key();
-				const JsValueRef& module = it.Value();
+				const JsValueRef& module = it.Value().Get();
 
 				FString FullPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*name);
 				chakra::SetProperty(out, name, chakra::String(FullPath));
