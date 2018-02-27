@@ -6,9 +6,11 @@
 #include "UObjectGlobals.h"
 #include "ScriptMacros.h"
 
+#if !defined(__clang__)
 #pragma warning( push )
 #pragma warning( disable : 4946 )
 #pragma warning( disable : 4191 )
+#endif
 
 PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
@@ -34,7 +36,9 @@ THIRD_PARTY_INCLUDES_END
 
 PRAGMA_ENABLE_SHADOW_VARIABLE_WARNINGS
 
+#if !defined(__clang__)
 #pragma warning( pop )
+#endif
 
 DECLARE_LOG_CATEGORY_EXTERN(Javascript, Log, All);
 

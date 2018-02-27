@@ -144,7 +144,7 @@ public class V8 : ModuleRules
             }
             
 
-            Definitions.Add(string.Format("WITH_CHAKRACORE=1"));
+            Definitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
 
             return true;
         }
@@ -179,6 +179,16 @@ public class V8 : ModuleRules
             }
 
             Definitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
+
+            return true;
+        }
+        else if (Target.Platform == UnrealTargetPlatform.IOS)
+        {
+            string LibrariesPath = Path.Combine(ThirdPartyPath, "chakracore", "lib", "IOS");
+            PublicLibraryPaths.Add(LibrariesPath);
+
+            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libChakraCoreStatic.a"));
+            Definitions.Add("WITH_CHAKRA_CORE=1");
 
             return true;
         }
