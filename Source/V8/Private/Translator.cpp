@@ -51,10 +51,7 @@ namespace chakra
 
 		JsValueRef selfExternal = chakra::GetProperty(Value, "__self");
 		if (chakra::IsEmpty(selfExternal) || chakra::IsUndefined(selfExternal))
-		{
-			TArray<FString> props = chakra::PropertyNames(Value);
 			return nullptr;
-		}
 
 		void* dataPtr = nullptr;
 		JsCheck(JsGetExternalData(selfExternal, &dataPtr));
