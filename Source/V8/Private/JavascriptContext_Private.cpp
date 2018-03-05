@@ -1727,6 +1727,27 @@ public:
 			auto inner = [&](const FString& script_path)
 			{
 				FString relative_path = script_path.Replace(TEXT("/./"), TEXT("/"));
+
+				// path referencing .. cleansing
+				int pos = relative_path.Len();
+				while (true)
+				{
+					int idx = relative_path.Find("/../", ESearchCase::CaseSensitive, ESearchDir::FromEnd, pos);
+					if (idx < 0)
+						break;
+
+					int parentIdx = relative_path.Find("/", ESearchCase::CaseSensitive, ESearchDir::FromEnd, idx) + 1;
+					FString parent = relative_path.Mid(parentIdx, idx - parentIdx);
+					if (parent == "..")
+					{
+						pos = idx;
+						continue;
+					}
+
+					relative_path = relative_path.Mid(0, parentIdx) + relative_path.Mid(idx + 4);
+					pos = relative_path.Len(); // reset counter
+				}
+
 				FString full_path = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*relative_path);
 #if PLATFORM_WINDOWS
 				full_path = full_path.Replace(TEXT("/"), TEXT("\\"));
