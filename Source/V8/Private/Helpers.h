@@ -268,6 +268,14 @@ namespace chakra
 		return PropID;
 	}
 
+	static JsValueType GetType(JsValueRef Value)
+	{
+		JsValueType type = JsUndefined;
+		JsCheck(JsGetValueType(Value, &type));
+
+		return type;
+	}
+
 	static JsValueRef GetProperty(JsValueRef Value, const char* Name)
 	{
 		JsValueRef Property = JS_INVALID_REFERENCE;
@@ -350,8 +358,7 @@ namespace chakra
 		if (PropertyDescriptor.Writable && IsEmpty(PropertyDescriptor.Setter))
 			SetProperty(AccessorDesc, "writable", Boolean(true));
 
-		JsValueType type;
-		JsCheck(JsGetValueType(Value, &type));
+		JsValueType type = GetType(Value);
 
 		if (type == JsFunction)
 		{

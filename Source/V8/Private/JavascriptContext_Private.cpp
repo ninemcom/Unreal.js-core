@@ -2195,7 +2195,7 @@ public:
 		JsErrorCode err = JsNoError;
 
 		// run script with context stack
-		err = JsRun(script, NextModuleSourceContext++, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributes::JsParseScriptAttributeLibraryCode, &returnValue);
+		err = JsRun(script, NextModuleSourceContext++, chakra::String(LocalPathToURL(Path)), JsParseScriptAttributeNone, &returnValue);
 
 		if (err == JsErrorScriptException)
 		{
@@ -2203,8 +2203,6 @@ public:
 			JsCheck(JsGetAndClearException(&exception));
 
 			JsValueRef stackValue = chakra::GetProperty(exception, "stack");
-			JsCheck(JsConvertValueToString(exception, &exception));
-
 			FString strErr = chakra::StringFromChakra(exception);
 			FString stack = chakra::StringFromChakra(stackValue);
 			UncaughtException(strErr + " " + stack);
