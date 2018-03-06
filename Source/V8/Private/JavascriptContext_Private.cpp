@@ -1875,8 +1875,8 @@ public:
 					if (inner_json(script_path + TEXT(".json"))) return true;
 				}
 
-				if (inner(script_path / TEXT("index.js"))) return true;
 				if (inner_package_json(script_path)) return true;
+				if (inner(script_path / TEXT("index.js"))) return true;
 
 				return false;
 			};
