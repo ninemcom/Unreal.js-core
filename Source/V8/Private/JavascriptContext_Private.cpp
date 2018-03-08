@@ -1168,6 +1168,8 @@ public:
 			ExportEnum(*It);
 		}
 
+		ExportGC(ObjectTemplate);
+
 		ExportConsole(ObjectTemplate);
 
 		ExportMemory(ObjectTemplate);
@@ -1705,6 +1707,31 @@ public:
 		}
 	}
 
+	void DoGarbageCollection()
+	{
+		FContextScope scope(context());
+
+		// @todo: using 'ForTesting' function
+		JsRuntimeHandle runtime = JS_INVALID_RUNTIME_HANDLE;
+		JsCheck(JsGetRuntime(context(), &runtime));
+		JsCheck(JsCollectGarbage(runtime));
+	}
+
+	void ExportGC(JsValueRef GlobalTemplate)
+	{
+		auto func = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			if (argumentCount == 1)
+			{
+				FJavascriptContextImplementation* Self = reinterpret_cast<FJavascriptContextImplementation*>(callbackState);
+				Self->DoGarbageCollection();
+			}
+
+			return chakra::Undefined();
+		};
+
+		chakra::SetProperty(GlobalTemplate, "gc", chakra::FunctionTemplate(func, this));
+	}
+
 	void ExposeRequire()
 	{
 		FContextScope scope(context());
@@ -2116,13 +2143,7 @@ public:
 		// do garbage colliction now
 		if (bGCRequested)
 		{
-			FContextScope scope(context());
-
-			// @todo: using 'ForTesting' function
-			JsRuntimeHandle runtime = JS_INVALID_RUNTIME_HANDLE;
-			JsCheck(JsGetRuntime(context(), &runtime));
-			JsCheck(JsCollectGarbage(runtime));
-
+			DoGarbageCollection();
 			bGCRequested = false;
 		}
 
