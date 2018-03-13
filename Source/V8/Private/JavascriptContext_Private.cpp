@@ -2769,7 +2769,7 @@ public:
 			for (int i = 0; i < Property->ArrayDim; i++)
 			{
 				T* ptr = Property->ContainerPtrToValuePtr<T>(Buffer, i);
-				FromValue(ptr, Property, chakra::GetIndex(Value, i));
+				FromValue<T>(ptr, Property, chakra::GetIndex(Value, i));
 			}
 		}
 		else
@@ -2778,7 +2778,7 @@ public:
 			check(Property->ArrayDim <= 1);
 
 			T* ptr = Property->ContainerPtrToValuePtr<T>(Buffer);
-			FromValue(ptr, Property, Value);
+			FromValue<T>(ptr, Property, Value);
 		}
 	}
 
@@ -4559,72 +4559,78 @@ JsValueRef FJavascriptContextImplementation::ConvertValue(const FStructDummy& cV
 template<>
 void FJavascriptContextImplementation::FromValue(bool* Ptr, UProperty* Property, JsValueRef Value)
 {
-	*Ptr = chakra::BoolFrom(Value);
+	Cast<UBoolProperty>(Property)->SetPropertyValue(Ptr, chakra::BoolFrom(Value));
 }
 
 template<>
 void FJavascriptContextImplementation::FromValue(int32* Ptr, UProperty* Property, JsValueRef Value)
 {
-	*Ptr = chakra::IntFrom(Value);
+	Cast<UNumericProperty>(Property)->SetIntPropertyValue(Ptr, (int64)chakra::IntFrom(Value));
 }
 
 template<>
 void FJavascriptContextImplementation::FromValue(uint32* Ptr, UProperty* Property, JsValueRef Value)
 {
-	*Ptr = (uint32)chakra::IntFrom(Value);
+	Cast<UNumericProperty>(Property)->SetIntPropertyValue(Ptr, (uint64)chakra::IntFrom(Value));
 }
 
 template<>
 void FJavascriptContextImplementation::FromValue(float* Ptr, UProperty* Property, JsValueRef Value)
 {
-	*Ptr = (float)chakra::DoubleFrom(Value);
+	Cast<UNumericProperty>(Property)->SetFloatingPointPropertyValue(Ptr, (double)chakra::DoubleFrom(Value));
 }
 
 template<>
 void FJavascriptContextImplementation::FromValue(FString* Ptr, UProperty* Property, JsValueRef Value)
 {
-	*Ptr = chakra::StringFromChakra(Value);
+	Cast<UStrProperty>(Property)->SetPropertyValue(Ptr, chakra::StringFromChakra(Value));
 }
 
 template<>
 void FJavascriptContextImplementation::FromValue(FText* Ptr, UProperty* Property, JsValueRef Value)
 {
-	*Ptr = FText::FromString(chakra::StringFromChakra(Value));
+	Cast<UTextProperty>(Property)->SetPropertyValue(Ptr, FText::FromString(chakra::StringFromChakra(Value)));
 }
 
 template<>
 void FJavascriptContextImplementation::FromValue(FName* Ptr, UProperty* Property, JsValueRef Value)
 {
-	*Ptr = FName(*chakra::StringFromChakra(Value));
+	Cast<UNameProperty>(Property)->SetPropertyValue(Ptr, FName(*chakra::StringFromChakra(Value)));
 }
 
 template<>
 void FJavascriptContextImplementation::FromValue(uint8* Ptr, UProperty* Property, JsValueRef Value)
 {
-	UEnum* Enum = nullptr;
 	UByteProperty* byteProperty = Cast<UByteProperty>(Property);
 	if (byteProperty && byteProperty->Enum)
-		Enum = byteProperty->Enum;
-
-	if (UEnumProperty* enumProperty = Cast<UEnumProperty>(Property))
-		Enum = enumProperty->GetEnum();
-
-	if (Enum)
 	{
 		FString Str = chakra::StringFromChakra(Value);
-		int EnumValue = Enum->GetIndexByName(FName(*Str), EGetByNameFlags::None);
+		int EnumValue = byteProperty->Enum->GetIndexByName(FName(*Str), EGetByNameFlags::None);
 		if (EnumValue == INDEX_NONE)
 		{
-			chakra::Throw(FString::Printf(TEXT("Enum Text %s for Enum %s failed to resolve to any value"), *Str, *Enum->GetName()));
+			chakra::Throw(FString::Printf(TEXT("Enum Text %s for Enum %s failed to resolve to any value"), *Str, *byteProperty->Enum->GetName()));
 		}
 		else
 		{
 			*Ptr = EnumValue;
 		}
 	}
-	else
+	else if (UEnumProperty* enumProperty = Cast<UEnumProperty>(Property))
 	{
-		*Ptr = (uint8) chakra::IntFrom(Value);
+		FString Str = chakra::StringFromChakra(Value);
+		int EnumValue = enumProperty->GetEnum()->GetIndexByName(FName(*Str), EGetByNameFlags::None);
+		if (EnumValue == INDEX_NONE)
+		{
+			chakra::Throw(FString::Printf(TEXT("Enum Text %s for Enum %s failed to resolve to any value"), *Str, *enumProperty->GetEnum()->GetName()));
+		}
+		else
+		{
+			enumProperty->GetUnderlyingProperty()->SetIntPropertyValue(Ptr, (int64)EnumValue);
+		}
+	}
+	else if (byteProperty)
+	{
+		byteProperty->SetPropertyValue(Ptr, chakra::IntFrom(Value));
 	}
 }
 
