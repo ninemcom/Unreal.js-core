@@ -75,11 +75,10 @@ struct FV8Config
 		return true;
 	}
 		
-	static bool CanExportProperty(const UStruct* Class, const UProperty* Property)
+	FORCENOINLINE static bool CanExportProperty(const UStruct* Class, const UProperty* Property)
 	{
 		// Skip unsupported static array and interface.
-		if (Property->ArrayDim > 1 ||			
-			Property->IsA(UInterfaceProperty::StaticClass()))
+		if (Property->IsA(UInterfaceProperty::StaticClass()))
 		{
 			return false;
 		}

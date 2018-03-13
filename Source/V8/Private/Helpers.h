@@ -63,8 +63,9 @@ namespace chakra
 
 	static void Throw(const FString& InString)
 	{
-		JsValueRef stringValue = String(InString);
-		JsCheck(JsSetException(stringValue));
+		JsValueRef error = JS_INVALID_REFERENCE;
+		JsCreateError(String(InString), &error);
+		JsCheck(JsSetException(error));
 	}
 
 	static JsValueRef External(void* Data, JsFinalizeCallback OnDestroy)
