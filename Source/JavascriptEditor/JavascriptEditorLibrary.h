@@ -8,6 +8,7 @@
 #include "Editor/Transactor.h"
 #include "Engine/Brush.h"
 #include "WorkspaceItem.h"
+#include "BlueprintEditorModule.h"
 #include "JavascriptEditorLibrary.generated.h"
 
 UENUM()
@@ -120,6 +121,16 @@ namespace EJavascriptMessageSeverity
 		Info = 4,	// Should be last
 	};
 }
+
+// FBlueprintEditorModule::FBlueprintMenuExtensionEvent
+USTRUCT()
+struct FBlueprintMenuExtensionEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY() FJavascriptExtender Extender;
+	UPROPERTY() UBlueprint* Blueprint;
+};
 
 /**
  * 
@@ -373,6 +384,9 @@ class JAVASCRIPTEDITOR_API UJavascriptEditorLibrary : public UBlueprintFunctionL
 
 	UFUNCTION(BlueprintCallable, Category = "Javascript | Editor")
 	static FJavascriptExtensibilityManager GetToolBarExtensibilityManager(FName What);
+
+	UFUNCTION(BlueprintCallable, Category = "Javascript | Editor")
+	static void OnGatherBlueprintMenuExtensions(FJavascriptFunction Event);
 
 	UFUNCTION(BlueprintCallable, Category = "Javascript | Editor")
 	static FJavascriptUICommandList GetLevelEditorActions();

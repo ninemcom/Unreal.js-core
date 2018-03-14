@@ -81,6 +81,7 @@ public class JavascriptEditor : ModuleRules
                         "UMG",
                         "Foliage",
                         "LandscapeEditor",
+                        "Kismet",
                         "KismetWidgets"
 				    }
             );

@@ -12,7 +12,10 @@
 #include "BSPOps.h"
 #include "HotReloadInterface.h"
 #include "JavascriptWindow.h"
+#include "Editor/Kismet/Public/BlueprintEditorModule.h"
+#include "Editor/MaterialEditor/Public/MaterialEditorModule.h"
 #include "Editor/PropertyEditor/Public/PropertyEditorModule.h"
+#include "Editor/UMGEditor/Public/UMGEditorModule.h"
 #include "Toolkits/AssetEditorToolkit.h"
 #include "LevelEditor.h"
 #include "Landscape.h"
@@ -39,6 +42,14 @@
 
 #include "Developer/MessageLog/Public/MessageLogModule.h"
 #include "Developer/MessageLog/Public/IMessageLogListing.h"
+
+namespace
+{
+	FName NAME_LevelEditor    = "LevelEditor";
+	FName NAME_MaterialEditor = "MaterialEditor";
+	FName NAME_UMGEditor      = "UMGEditor";
+	FName NAME_Kismet         = "Kismet";
+}
 
 #if WITH_EDITOR
 ULandscapeInfo* UJavascriptEditorLibrary::GetLandscapeInfo(ALandscape* Landscape, bool bSpawnNewActor)
@@ -614,15 +625,27 @@ void UJavascriptEditorLibrary::CreatePropertyEditorToolkit(TArray<UObject*> Obje
 	PropertyEditorModule.CreatePropertyEditorToolkit(EToolkitMode::Standalone, TSharedPtr<IToolkitHost>(), ObjectsForPropertiesMenu);
 }
 
-static FName NAME_LevelEditor("LevelEditor");
-static FName NAME_MaterialEditor("MaterialEditor");
-
 FJavascriptExtensibilityManager UJavascriptEditorLibrary::GetMenuExtensibilityManager(FName What)
 {
 	if (What == NAME_LevelEditor)
 	{
 		FLevelEditorModule& LevelEditor = FModuleManager::LoadModuleChecked<FLevelEditorModule>(NAME_LevelEditor);
 		return {LevelEditor.GetMenuExtensibilityManager()};
+	}
+	if (What == NAME_Kismet)
+	{
+		FBlueprintEditorModule& BlueprintEditor = FModuleManager::LoadModuleChecked<FBlueprintEditorModule>(NAME_Kismet);
+		return {BlueprintEditor.GetMenuExtensibilityManager()};
+	}
+	if (What == NAME_MaterialEditor)
+	{
+		IMaterialEditorModule& MaterialEditor = FModuleManager::LoadModuleChecked<IMaterialEditorModule>(NAME_MaterialEditor);
+		return { MaterialEditor.GetMenuExtensibilityManager() };
+	}
+	if (What == NAME_UMGEditor)
+	{
+		IUMGEditorModule& UMGEditor = FModuleManager::LoadModuleChecked<IUMGEditorModule>(NAME_UMGEditor);
+		return { UMGEditor.GetMenuExtensibilityManager() };
 	}
 	return FJavascriptExtensibilityManager();
 }
@@ -634,7 +657,30 @@ FJavascriptExtensibilityManager UJavascriptEditorLibrary::GetToolBarExtensibilit
 		FLevelEditorModule& LevelEditor = FModuleManager::LoadModuleChecked<FLevelEditorModule>(NAME_LevelEditor);
 		return{ LevelEditor.GetToolBarExtensibilityManager() };
 	}
+	if (What == NAME_MaterialEditor)
+	{
+		IMaterialEditorModule& MaterialEditor = FModuleManager::LoadModuleChecked<IMaterialEditorModule>(NAME_MaterialEditor);
+		return { MaterialEditor.GetToolBarExtensibilityManager() };
+	}
+	if (What == NAME_UMGEditor)
+	{
+		IUMGEditorModule& UMGEditor = FModuleManager::LoadModuleChecked<IUMGEditorModule>(NAME_UMGEditor);
+		return { UMGEditor.GetToolBarExtensibilityManager() };
+	}
 	return FJavascriptExtensibilityManager();
+}
+
+void UJavascriptEditorLibrary::OnGatherBlueprintMenuExtensions(FJavascriptFunction Event)
+{
+	TSharedPtr<FJavascriptFunction> Capture = MakeShareable(new FJavascriptFunction(Event));
+	FBlueprintEditorModule& BlueprintEditor = FModuleManager::LoadModuleChecked<FBlueprintEditorModule>(NAME_Kismet);
+	BlueprintEditor.OnGatherBlueprintMenuExtensions().AddLambda([Capture](TSharedPtr<FExtender> Extender, UBlueprint* Blueprint) {
+		FBlueprintMenuExtensionEvent Event;
+		Event.Extender = Extender;
+		Event.Blueprint = Blueprint;
+
+		Capture->Execute(FBlueprintMenuExtensionEvent::StaticStruct(), &Event);
+	});
 }
 
 FJavascriptUICommandList UJavascriptEditorLibrary::GetLevelEditorActions()
