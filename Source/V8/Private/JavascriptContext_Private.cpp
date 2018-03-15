@@ -48,6 +48,9 @@ static const FString URL_FilePrefix(TEXT("file:///"));
 class hack_private_key {};
 static UClass* PlaceholderUClass;
 
+// for UStructProperty
+struct FStructDummy {};
+
 template<>
 FObjectInitializer const& FObjectInitializer::SetDefaultSubobjectClass<hack_private_key>(TCHAR const*SubobjectName) const
 {
@@ -97,7 +100,11 @@ FString PropertyNameToString(UProperty* Property)
 			return s->PropertyNameToDisplayName(name);
 		}
 	}
-	return name.ToString();
+
+	if (name.GetDisplayIndex() > 0)
+		return name.ToString();
+
+	return name.GetPlainNameString();
 }
 
 bool MatchPropertyName(UProperty* Property, FName NameToMatch)
@@ -2616,10 +2623,13 @@ public:
 		return InternalReadProperty(Property, Buffer, Owner);
 	}
 
-	struct FStructDummy;
-
 	template <typename T>
-	JsValueRef ConvertValue(const T& cValue, UProperty* Property, const IPropertyOwner& Owner) = delete;
+	//JsValueRef ConvertValue(const T& cValue, UProperty* Property, const IPropertyOwner& Owner) = delete;
+	JsValueRef ConvertValue(const T& cValue, UProperty* Property, const IPropertyOwner& Owner)
+	{
+		//static_assert(false, "implement for this type");
+		check(false);
+	}
 
 	template<typename T>
 	JsValueRef InternalReadSealedArray(UProperty* Property, uint8* Buffer, const IPropertyOwner& Owner)
@@ -2758,7 +2768,12 @@ public:
 	}
 
 	template <typename T>
-	void FromValue(T* Ptr, UProperty* Property, JsValueRef Value) = delete;
+	//void FromValue(T* Ptr, UProperty* Property, JsValueRef Value) = delete;
+	void FromValue(T* Ptr, UProperty* Property, JsValueRef Value)
+	{
+		//static_assert(false, "implement for this type");
+		check(false);
+	}
 
 	template <typename T>
 	void InternalWriteSealedArray(UProperty* Property, uint8* Buffer, JsValueRef Value)
@@ -4384,50 +4399,50 @@ public:
 };
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const bool& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<bool>(const bool& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	return chakra::Boolean(cValue);
 }
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const int32& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<int32>(const int32& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	return chakra::Int(cValue);
 }
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const uint32& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<uint32>(const uint32& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	return chakra::Int(cValue);
 }
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const float& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<float>(const float& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	return chakra::Double(cValue);
 }
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const FString& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<FString>(const FString& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	return chakra::String(cValue);
 }
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const FText& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<FText>(const FText& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	return chakra::String(cValue.ToString());
 }
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const FName& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<FName>(const FName& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	return chakra::String(cValue.ToString());
 }
 
 // for enum
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const uint8& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<uint8>(const uint8& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	UByteProperty* byteProperty = Cast<UByteProperty>(Property);
 	if (byteProperty && byteProperty->Enum)
@@ -4445,7 +4460,7 @@ JsValueRef FJavascriptContextImplementation::ConvertValue(const uint8& cValue, U
 }
 
 template<>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const FScriptArray& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<FScriptArray>(const FScriptArray& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	check(Property->IsA<UArrayProperty>());
 
@@ -4481,7 +4496,7 @@ JsValueRef FJavascriptContextImplementation::ConvertValue(const FScriptArray& cV
 }
 
 template<>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const FScriptSet& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<FScriptSet>(const FScriptSet& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	check(Property->IsA<USetProperty>());
 	USetProperty* setProperty = Cast<USetProperty>(Property);
@@ -4502,7 +4517,7 @@ JsValueRef FJavascriptContextImplementation::ConvertValue(const FScriptSet& cVal
 }
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(UClass* const& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<UClass*>(UClass* const& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	if (cValue == nullptr)
 		return chakra::Null();
@@ -4511,13 +4526,13 @@ JsValueRef FJavascriptContextImplementation::ConvertValue(UClass* const& cValue,
 }
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(UObject* const& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<UObject*>(UObject* const& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	return ExportObject(const_cast<UObject*>(cValue));
 }
 
 template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const FScriptMap& cValue, UProperty* Property, const IPropertyOwner& Owner)
+JsValueRef FJavascriptContextImplementation::ConvertValue<FScriptMap>(const FScriptMap& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	check(Property->IsA<UMapProperty>());
 	UMapProperty* mapProperty = Cast<UMapProperty>(Property);
@@ -4540,10 +4555,8 @@ JsValueRef FJavascriptContextImplementation::ConvertValue(const FScriptMap& cVal
 	return Out;
 }
 
-struct FStructDummy {};
-
-template <>
-JsValueRef FJavascriptContextImplementation::ConvertValue(const FStructDummy& cValue, UProperty* Property, const IPropertyOwner& Owner)
+template<>
+JsValueRef FJavascriptContextImplementation::ConvertValue<FStructDummy>(FStructDummy const& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	check(Property->IsA<UStructProperty>());
 	UStructProperty* structProperty = Cast<UStructProperty>(Property);
@@ -4557,49 +4570,49 @@ JsValueRef FJavascriptContextImplementation::ConvertValue(const FStructDummy& cV
 }
 
 template<>
-void FJavascriptContextImplementation::FromValue(bool* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<bool>(bool* Ptr, UProperty* Property, JsValueRef Value)
 {
 	Cast<UBoolProperty>(Property)->SetPropertyValue(Ptr, chakra::BoolFrom(Value));
 }
 
 template<>
-void FJavascriptContextImplementation::FromValue(int32* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<int32>(int32* Ptr, UProperty* Property, JsValueRef Value)
 {
 	Cast<UNumericProperty>(Property)->SetIntPropertyValue(Ptr, (int64)chakra::IntFrom(Value));
 }
 
 template<>
-void FJavascriptContextImplementation::FromValue(uint32* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<uint32>(uint32* Ptr, UProperty* Property, JsValueRef Value)
 {
 	Cast<UNumericProperty>(Property)->SetIntPropertyValue(Ptr, (uint64)chakra::IntFrom(Value));
 }
 
 template<>
-void FJavascriptContextImplementation::FromValue(float* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<float>(float* Ptr, UProperty* Property, JsValueRef Value)
 {
 	Cast<UNumericProperty>(Property)->SetFloatingPointPropertyValue(Ptr, (double)chakra::DoubleFrom(Value));
 }
 
 template<>
-void FJavascriptContextImplementation::FromValue(FString* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<FString>(FString* Ptr, UProperty* Property, JsValueRef Value)
 {
 	Cast<UStrProperty>(Property)->SetPropertyValue(Ptr, chakra::StringFromChakra(Value));
 }
 
 template<>
-void FJavascriptContextImplementation::FromValue(FText* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<FText>(FText* Ptr, UProperty* Property, JsValueRef Value)
 {
 	Cast<UTextProperty>(Property)->SetPropertyValue(Ptr, FText::FromString(chakra::StringFromChakra(Value)));
 }
 
 template<>
-void FJavascriptContextImplementation::FromValue(FName* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<FName>(FName* Ptr, UProperty* Property, JsValueRef Value)
 {
 	Cast<UNameProperty>(Property)->SetPropertyValue(Ptr, FName(*chakra::StringFromChakra(Value)));
 }
 
 template<>
-void FJavascriptContextImplementation::FromValue(uint8* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<uint8>(uint8* Ptr, UProperty* Property, JsValueRef Value)
 {
 	UByteProperty* byteProperty = Cast<UByteProperty>(Property);
 	if (byteProperty && byteProperty->Enum)
@@ -4635,7 +4648,7 @@ void FJavascriptContextImplementation::FromValue(uint8* Ptr, UProperty* Property
 }
 
 template <>
-void FJavascriptContextImplementation::FromValue(FScriptArray* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<FScriptArray>(FScriptArray* Ptr, UProperty* Property, JsValueRef Value)
 {
 	UArrayProperty* arrayProperty = Cast<UArrayProperty>(Property);
 	check(arrayProperty);
@@ -4670,7 +4683,7 @@ void FJavascriptContextImplementation::FromValue(FScriptArray* Ptr, UProperty* P
 }
 
 template <>
-void FJavascriptContextImplementation::FromValue(FScriptSet* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<FScriptSet>(FScriptSet* Ptr, UProperty* Property, JsValueRef Value)
 {
 	USetProperty* setProperty = Cast<USetProperty>(Property);
 	check(setProperty);
@@ -4695,7 +4708,7 @@ void FJavascriptContextImplementation::FromValue(FScriptSet* Ptr, UProperty* Pro
 }
 
 template <>
-void FJavascriptContextImplementation::FromValue(FScriptMap* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<FScriptMap>(FScriptMap* Ptr, UProperty* Property, JsValueRef Value)
 {
 	UMapProperty* mapProperty = Cast<UMapProperty>(Property);
 	check(mapProperty);
@@ -4723,7 +4736,7 @@ void FJavascriptContextImplementation::FromValue(FScriptMap* Ptr, UProperty* Pro
 }
 
 template <>
-void FJavascriptContextImplementation::FromValue(UObject** Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<UObject*>(UObject** Ptr, UProperty* Property, JsValueRef Value)
 {
 	UObjectPropertyBase* objProperty = Cast<UObjectPropertyBase>(Property);
 	UObject* obj = chakra::UObjectFromChakra(Value);
@@ -4761,7 +4774,7 @@ void FJavascriptContextImplementation::FromValue(UObject** Ptr, UProperty* Prope
 }
 
 template <>
-void FJavascriptContextImplementation::FromValue(UClass** Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<UClass*>(UClass** Ptr, UProperty* Property, JsValueRef Value)
 {
 	if (chakra::IsString(Value))
 	{
@@ -4795,7 +4808,7 @@ void FJavascriptContextImplementation::FromValue(UClass** Ptr, UProperty* Proper
 }
 
 template <>
-void FJavascriptContextImplementation::FromValue(FStructDummy* Ptr, UProperty* Property, JsValueRef Value)
+void FJavascriptContextImplementation::FromValue<FStructDummy>(FStructDummy* Ptr, UProperty* Property, JsValueRef Value)
 {
 	check(Property->IsA<UStructProperty>());
 	UStructProperty* structProperty = Cast<UStructProperty>(Property);
