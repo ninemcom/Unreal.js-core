@@ -100,11 +100,7 @@ FString PropertyNameToString(UProperty* Property)
 			return s->PropertyNameToDisplayName(name);
 		}
 	}
-
-	if (name.GetDisplayIndex() > 0)
-		return name.ToString();
-
-	return name.GetPlainNameString();
+	return name.ToString();
 }
 
 bool MatchPropertyName(UProperty* Property, FName NameToMatch)
@@ -4528,7 +4524,8 @@ JsValueRef FJavascriptContextImplementation::ConvertValue<UClass*>(UClass* const
 template <>
 JsValueRef FJavascriptContextImplementation::ConvertValue<UObject*>(UObject* const& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
-	return ExportObject(const_cast<UObject*>(cValue));
+	UObjectPropertyBase* objProperty = CastChecked<UObjectPropertyBase>(Property);
+	return ExportObject(objProperty->GetObjectPropertyValue(&cValue));
 }
 
 template <>
@@ -4625,7 +4622,7 @@ void FJavascriptContextImplementation::FromValue<uint8>(uint8* Ptr, UProperty* P
 		}
 		else
 		{
-			*Ptr = EnumValue;
+			byteProperty->SetPropertyValue(Ptr, EnumValue);
 		}
 	}
 	else if (UEnumProperty* enumProperty = Cast<UEnumProperty>(Property))
@@ -4744,12 +4741,12 @@ void FJavascriptContextImplementation::FromValue<UObject*>(UObject** Ptr, UPrope
 	if (obj)
 	{
 		// object value
-		*Ptr = obj;
+		objProperty->SetObjectPropertyValue(Ptr, obj);
 	}
 	else if (chakra::IsObject(Value))
 	{
 		// overwrite property
-		UObject* target = *Ptr;
+		UObject* target = objProperty->GetObjectPropertyValue(Ptr);
 		JsValueRef classValue = chakra::GetProperty(Value, "__class");
 		UClass* cls = objProperty->PropertyClass;
 		if (chakra::IsString(classValue))
@@ -4761,7 +4758,7 @@ void FJavascriptContextImplementation::FromValue<UObject*>(UObject** Ptr, UPrope
 		if (target == nullptr)
 		{
 			target = NewObject<UObject>(GetTransientPackage(), cls);
-			*Ptr = target;
+			objProperty->SetObjectPropertyValue(Ptr, target);
 		}
 
 		ReadOffStruct(Value, cls, reinterpret_cast<uint8*>(target));
@@ -4769,41 +4766,42 @@ void FJavascriptContextImplementation::FromValue<UObject*>(UObject** Ptr, UPrope
 	else
 	{
 		// null value
-		*Ptr = nullptr;
+		objProperty->SetObjectPropertyValue(Ptr, obj);
 	}
 }
 
 template <>
 void FJavascriptContextImplementation::FromValue<UClass*>(UClass** Ptr, UProperty* Property, JsValueRef Value)
 {
+	UClassProperty* classProperty = Cast<UClassProperty>(Property);
 	if (chakra::IsString(Value))
 	{
 		FString UString = chakra::StringFromChakra(Value);
 		if (UString == TEXT("null"))
 		{
-			*Ptr = nullptr;
+			classProperty->SetPropertyValue(Ptr, nullptr);
 		}
 		else
 		{
 			UObject* Object = StaticLoadObject(UObject::StaticClass(), nullptr, *UString);
 			if (UClass* Class = Cast<UClass>(Object))
 			{
-				*Ptr = Class;
+				classProperty->SetPropertyValue(Ptr, Class);
 			}
 			else if (UBlueprint* BP = Cast<UBlueprint>(Object))
 			{
 				auto BPGC = BP->GeneratedClass;
-				*Ptr = BPGC.Get();
+				classProperty->SetPropertyValue(Ptr, BPGC.Get());
 			}
 			else
 			{
-				*Ptr = static_cast<UClass*>(Object);
+				classProperty->SetPropertyValue(Ptr, Object);
 			}
 		}
 	}
 	else
 	{
-		*Ptr = chakra::UClassFromChakra(Value);
+		classProperty->SetPropertyValue(Ptr, chakra::UClassFromChakra(Value));
 	}
 }
 
