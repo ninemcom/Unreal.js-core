@@ -29,6 +29,7 @@ int32 UJavascriptCommandlet::Main(const FString& Params)
 			if (CmdLineTokens.Num())
 			{
 				JavascriptContext->RunFile(CmdLineTokens[0]);
+				bSuccess = true;
 			}
 		}
 
