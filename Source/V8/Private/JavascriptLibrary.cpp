@@ -16,6 +16,10 @@
 #include "UObject/Package.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/Engine.h"
+#include "Misc/Base64.h"
+#include "Serialization/ObjectReader.h"
+#include "Serialization/ObjectWriter.h"
+#include "Serialization/NameAsStringProxyArchive.h"
 
 struct FPrivateSocketHandle
 {
@@ -120,6 +124,122 @@ UObject* UJavascriptLibrary::GetOuter(UObject* Object)
 UObject* UJavascriptLibrary::GetOutermost(UObject* Object)
 {
 	return Object ? Object->GetOutermost() : nullptr;
+}
+
+FString UJavascriptLibrary::Encode(UObject* Object)
+{
+	class FWriterProxy : public FNameAsStringProxyArchive
+	{
+	public:
+		FWriterProxy(FArchive& InInternalArchive)
+			: FNameAsStringProxyArchive(InInternalArchive)
+		{
+			ArIsLoading = false;
+		}
+
+		virtual FArchive& operator<<(struct FWeakObjectPtr& Value) override { return *this; }
+		virtual FArchive& operator<<(UObject*& Value) override
+		{
+			FString classPath;
+			if (Value) classPath = Value->GetClass()->GetPathName();
+
+			// read/write class information
+			*this << classPath;
+
+			if (IsLoading())
+			{
+				UClass* cls = LoadObject<UClass>(nullptr, *classPath);
+				check(cls);
+
+				if (Value == nullptr)
+					Value = NewObject<UObject>(nullptr, cls);
+			}
+
+			if (Value && !Value->IsA<UClass>())
+			{
+				Value->Serialize(*this);
+			}
+
+			return *this;
+		}
+
+	};
+
+	
+	// special case...
+	TArray<uint8> Data;
+	FObjectWriter InternalWriter(Data);
+	FWriterProxy Ar(InternalWriter);
+
+	// HACK (cooking env)
+	Ar.SetCookingTarget(reinterpret_cast<const ITargetPlatform*>(1));
+
+	// serialize
+	Object->Serialize(Ar);
+
+	return FBase64::Encode(Data);
+}
+
+bool UJavascriptLibrary::Decode(UObject* Object, FString InData)
+{
+	check(Object);
+
+	class FObjectReaderProxy : public FObjectReader
+	{
+	public:
+		FObjectReaderProxy(TArray<uint8>& InBuffer)
+			: FObjectReader(InBuffer)
+		{}
+	};
+
+	class FReaderProxy : public FNameAsStringProxyArchive
+	{
+	public:
+		FReaderProxy(FArchive& InInternalArchive)
+			: FNameAsStringProxyArchive(InInternalArchive)
+		{
+			ArIsLoading = true;
+		}
+
+		virtual FArchive& operator<<(struct FWeakObjectPtr& Value) override { return *this; }
+		virtual FArchive& operator<<(UObject*& Value) override
+		{
+			FString classPath;
+			if (Value) classPath = Value->GetClass()->GetPathName();
+
+			// read/write class information
+			*this << classPath;
+
+			if (IsLoading())
+			{
+				UClass* cls = LoadObject<UClass>(nullptr, *classPath);
+				check(cls);
+
+				if (Value == nullptr)
+					Value = NewObject<UObject>(GetTransientPackage(), cls);
+			}
+
+			if (Value && !Value->IsA<UClass>())
+			{
+				Value->Serialize(*this);
+			}
+
+			return *this;
+		}
+	};
+
+	TArray<uint8> buffer;
+	if (!FBase64::Decode(InData, buffer))
+		return false;
+
+	FObjectReaderProxy InternalReader(buffer);
+	FReaderProxy Ar(InternalReader);
+	Ar.ArIsLoading = true;
+
+	// deserialize
+	Object->Serialize(Ar);
+
+	return true;
 }
 
 UObject* UJavascriptLibrary::Duplicate(UObject* Object, UObject* Outer, FName Name)

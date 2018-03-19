@@ -285,6 +285,12 @@ public:
 	static UObject* GetOutermost(UObject* Object);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	static FString Encode(UObject* Object);
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	static bool Decode(UObject* Object, FString InData);
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	static UObject* Duplicate(UObject* Object, UObject* Outer, FName Name);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
