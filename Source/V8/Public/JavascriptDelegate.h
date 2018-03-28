@@ -11,8 +11,13 @@ class V8_API UJavascriptDelegate : public UObject
 
 public:
 	int32 UniqueId;
+	bool Paused;
+	FDelegateHandle PausedHandle;
 
 	TWeakPtr<FJavascriptDelegate> JavascriptDelegate;	
+
+	UJavascriptDelegate();
+	virtual void BeginDestroy() override;
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	void Fire();

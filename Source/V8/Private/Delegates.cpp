@@ -1,5 +1,6 @@
 #include "Delegates.h"
 #include "V8PCH.h"
+#include "IV8.h"
 #include "JavascriptDelegate.h"
 #include "Translator.h"
 #include "Helpers.h"
@@ -390,12 +391,27 @@ namespace chakra
 	}
 }
 
+UJavascriptDelegate::UJavascriptDelegate()
+	: UObject()
+	, Paused(false)
+{
+	PausedHandle = IV8::Get().GetExecStatusChangedDelegate().AddLambda([=](bool Status) {
+		Paused = !Status;
+	});
+}
+
+void UJavascriptDelegate::BeginDestroy()
+{
+	IV8::Get().GetExecStatusChangedDelegate().Remove(PausedHandle);
+	Super::BeginDestroy();
+}
+
 void UJavascriptDelegate::Fire()
 {}
 
 void UJavascriptDelegate::ProcessEvent(UFunction* Function, void* Parms)
 {
-	if (JavascriptDelegate.IsValid())
+	if (!Paused && JavascriptDelegate.IsValid())
 	{
 		JavascriptDelegate.Pin()->Fire(Parms, this);
 	}
