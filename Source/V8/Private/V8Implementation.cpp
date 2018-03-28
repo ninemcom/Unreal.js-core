@@ -13,6 +13,14 @@
 
 DEFINE_LOG_CATEGORY(Javascript);
 
+uint32 FJavascriptBackgroundWork::Run()
+{
+	// context setted in Execute function
+	Work.Execute();
+	Done = true;
+	return 0;
+}
+
 void UJavascriptContext::GetHeapStatistics(FJavascriptHeapStatistics& Statistics)
 {
 	//v8::HeapStatistics stats;
@@ -53,6 +61,14 @@ UJavascriptContext::UJavascriptContext(const FObjectInitializer& ObjectInitializ
 		Expose("Context", this);
 
 		SetContextId(GetName());
+
+		ExecStatusChangeHandle = IV8::Get().GetExecStatusChangedDelegate().AddLambda([=](bool Status) {
+			if (Status) {
+				ResumeTick();
+			} else {
+				PauseTick();
+			}
+		});
 	}
 }
 
@@ -157,10 +173,21 @@ bool UJavascriptContext::CallProxyFunction(UObject* Holder, UObject* This, UFunc
 	return JavascriptContext->CallProxyFunction(Holder, This, FunctionToCall, Parms);
 }
 
+void UJavascriptContext::PauseTick()
+{
+	return JavascriptContext->PauseTick();
+}
+
+void UJavascriptContext::ResumeTick()
+{
+	return JavascriptContext->ResumeTick();
+}
+
 void UJavascriptContext::BeginDestroy()
 {
 	Super::BeginDestroy();
 
+	IV8::Get().GetExecStatusChangedDelegate().Remove(ExecStatusChangeHandle);
 	JavascriptContext.Reset();
 	ContextId.Reset();
 }

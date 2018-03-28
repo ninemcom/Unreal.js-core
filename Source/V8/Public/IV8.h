@@ -2,6 +2,8 @@
 
 #include "ModuleManager.h"
 
+DECLARE_MULTICAST_DELEGATE_OneParam(FJavascriptExecStateChangedDelegate, bool);
+
 /**
 * The public interface to this module. 
 */
@@ -26,6 +28,8 @@ public:
 	virtual void GetContextIds(TArray<TSharedPtr<FString>>& OutContexts) = 0;
 	virtual void FillAutoCompletion(TSharedPtr<FString> TargetContext, TArray<FString>& OutArray, const TCHAR* Input) = 0;
 	virtual void Exec(TSharedPtr<FString> TargetContext, const TCHAR* Command) = 0;
+	virtual void SetExecStatusChange(bool Status) = 0;
+	virtual FJavascriptExecStateChangedDelegate& GetExecStatusChangedDelegate() = 0;
 
 	//virtual void SetFlagsFromString(const FString& Flags) = 0;
 	virtual void SetIdleTaskBudget(float BudgetInSeconds) = 0;

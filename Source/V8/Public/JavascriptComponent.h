@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SubclassOf.h"
+#include "HAL/RunnableThread.h"
 #include "Components/ActorComponent.h"
 #include "JavascriptContext.h"
 #include "JavascriptComponent.generated.h"
@@ -69,6 +70,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Javascript")
 	TArray<FJavascriptClassAsset> ClassAssets;
 
+	TUniquePtr<FJavascriptBackgroundWork> BackgroundWork;
+	TUniquePtr<FRunnableThread> BackgroundWorkThread;
+
 	// Begin UActorComponent interface.
 	virtual void Activate(bool bReset = false) override;
 	virtual void Deactivate() override;	
@@ -85,6 +89,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Javascript")
 	void Invoke(FName Name);
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	void DoInBackground(FJavascriptFunction Work, FJavascriptFunction Callback);
 
 	virtual void ProcessEvent(UFunction* Function, void* Parms) override;	
 

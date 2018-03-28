@@ -860,6 +860,7 @@ class FJavascriptContextImplementation : public FJavascriptContext
 	bool bGCRequested;
 	FTickerDelegate TickDelegate;
 	FDelegateHandle TickHandle;
+	bool RunInGameThread;
 	TArray<JsValueRef> PromiseTasks;
 
 
@@ -1105,6 +1106,7 @@ public:
 
 		TickDelegate = FTickerDelegate::CreateRaw(this, &FJavascriptContextImplementation::HandleTicker);
 		TickHandle = FTicker::GetCoreTicker().AddTicker(TickDelegate);
+		ResumeTick();
 
 		ExposeGlobals();
 	}
@@ -1121,6 +1123,7 @@ public:
 		Delegates->Destroy();
 		Delegates = nullptr;
 
+		PauseTick();
 		FTicker::GetCoreTicker().RemoveTicker(TickHandle);
 
 		context_.Reset();
@@ -1205,6 +1208,18 @@ public:
 	void PurgeModules()
 	{
 		Modules.Empty();
+	}
+
+	void PauseTick() override
+	{
+		UE_LOG(Javascript, Log, TEXT("%p: Pause Tick"), this);
+		RunInGameThread = false;
+	}
+
+	void ResumeTick() override
+	{
+		UE_LOG(Javascript, Log, TEXT("%p: Resume Tick"), this);
+		RunInGameThread = true;
 	}
 
 	void GenerateBlueprintFunctionLibraryMapping()
@@ -2229,6 +2244,8 @@ public:
 
 	bool HandleTicker(float DeltaTime)
 	{
+		if (!RunInGameThread) return true;
+
 		if (debugRequested)
 		{
 			FContextScope scope(context());
@@ -2685,6 +2702,8 @@ public:
 	bool CallProxyFunction(UObject* Holder, UObject* This, UFunction* FunctionToCall, void* Parms)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_JavascriptProxy);
+
+		if (!RunInGameThread) return false;
 
 		FContextScope context_scope(context());
 
@@ -5165,7 +5184,19 @@ void FJavascriptFunction::Execute()
 			FContextScope context_scope(context);
 
 			JsValueRef returnValue = JS_INVALID_REFERENCE;
-			JsCheck(JsCallFunction(function, &function, 1, &returnValue));
+			JsErrorCode error = JsCallFunction(function, &function, 1, &returnValue);
+			if (error == JsErrorScriptException)
+			{
+				JsValueRef exception = JS_INVALID_REFERENCE;
+				JsCheck(JsGetAndClearException(&exception));
+
+				exception = chakra::GetProperty(exception, "stack");
+				FJavascriptContext::FromChakra(context)->UncaughtException(chakra::StringFromChakra(exception));
+			}
+			else if (error != JsNoError)
+			{
+				UE_LOG(Javascript, Error, TEXT("exception occured: %d"), (int)error);
+			}
 		}
 	}
 }

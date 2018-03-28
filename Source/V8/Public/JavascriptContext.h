@@ -5,6 +5,7 @@
 #include "Object.h"
 #include "UObjectGlobals.h"
 #include "ScriptMacros.h"
+#include "HAL/Runnable.h"
 #include "JavascriptContext.generated.h"
 
 struct FPrivateJavascriptFunction;
@@ -20,6 +21,25 @@ public:
 	void Execute(UScriptStruct* Struct, void* Buffer);
 
 	TSharedPtr<FPrivateJavascriptFunction> Handle;
+};
+
+class FJavascriptBackgroundWork : public FRunnable
+{
+	FJavascriptFunction Callback;
+	FJavascriptFunction Work;
+	bool Done;
+
+public:
+	FJavascriptBackgroundWork(const FJavascriptFunction& InWork, const FJavascriptFunction& InCallback)
+		: Work(InWork)
+		, Callback(InCallback)
+		, Done(false)
+	{}
+
+	virtual uint32 Run() override;
+
+	bool IsDone() const { return Done; }
+	FJavascriptFunction& GetCallback() { return Callback; }
 };
 
 USTRUCT(BlueprintType)
@@ -114,6 +134,7 @@ public:
 	TSharedPtr<FJavascriptContext> JavascriptContext;
 
 	TSharedPtr<FString> ContextId;
+	FDelegateHandle ExecStatusChangeHandle;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Scripting|Javascript")
 	TArray<FString> Paths;
@@ -165,6 +186,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	void GetHeapStatistics(FJavascriptHeapStatistics& Statistics);
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	void PauseTick();
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	void ResumeTick();
 
 	bool HasProxyFunction(UObject* Holder, UFunction* Function);
 	bool CallProxyFunction(UObject* Holder, UObject* This, UFunction* Function, void* Parms);

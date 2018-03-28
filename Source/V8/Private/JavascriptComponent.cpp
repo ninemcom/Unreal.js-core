@@ -58,7 +58,7 @@ void UJavascriptComponent::Activate(bool bReset)
 		JavascriptContext->RunFile(*ScriptSourceFile);
 		UE_LOG(Javascript, Log, TEXT("script %s run for %.2lfs"), *ScriptSourceFile, FPlatformTime::Seconds() - start);
 
-		SetComponentTickEnabled(OnTick.IsBound());	
+		SetComponentTickEnabled(OnTick.IsBound());
 	}
 
 	OnBeginPlay.ExecuteIfBound();
@@ -89,7 +89,28 @@ void UJavascriptComponent::TickComponent(float DeltaTime, enum ELevelTick TickTy
 
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	OnTick.ExecuteIfBound(DeltaTime);
+	if (BackgroundWork.IsValid())
+	{
+		if (!BackgroundWorkThread.IsValid())
+		{
+			// start background work
+			BackgroundWorkThread.Reset(FRunnableThread::Create(BackgroundWork.Get(), TEXT("JavascriptWorker")));
+		}
+		else if (BackgroundWork->IsDone())
+		{
+			FJavascriptFunction callback = BackgroundWork->GetCallback();
+			BackgroundWorkThread.Reset(); // also wait for completion
+			BackgroundWork.Reset();
+
+			callback.Execute();
+			IV8::Get().SetExecStatusChange(true);
+		}
+	}
+
+	if (!BackgroundWork.IsValid())
+	{
+		OnTick.ExecuteIfBound(DeltaTime);
+	}
 }
 
 void UJavascriptComponent::ForceGC()
@@ -115,6 +136,26 @@ void UJavascriptComponent::ProcessEvent(UFunction* Function, void* Parms)
 	}
 
 	Super::ProcessEvent(Function, Parms);
+}
+
+void UJavascriptComponent::DoInBackground(FJavascriptFunction Work, FJavascriptFunction Callback)
+{
+	check(FPlatformProcess::SupportsMultithreading());
+	if (!FPlatformProcess::SupportsMultithreading())
+	{
+		UE_LOG(Javascript, Log, TEXT("cannot run background work in single threaded environment"));
+		return;
+	}
+
+	check(!BackgroundWork.IsValid());
+	if (FPlatformProcess::SupportsMultithreading() && BackgroundWork.IsValid())
+	{
+		UE_LOG(Javascript, Log, TEXT("have already running background work, skipping it"));
+		return;
+	}
+
+	IV8::Get().SetExecStatusChange(false);
+	BackgroundWork = MakeUnique<FJavascriptBackgroundWork>(Work, Callback);
 }
 
 UObject* UJavascriptComponent::ResolveAsset(FName Name, bool bTryLoad)

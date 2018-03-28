@@ -52,6 +52,9 @@ struct FJavascriptContext : TSharedFromThis<FJavascriptContext>
 	virtual bool HasProxyFunction(UObject* Holder, UFunction* Function) = 0;
 	virtual bool CallProxyFunction(UObject* Holder, UObject* This, UFunction* FunctionToCall, void* Parms) = 0;	
 
+	virtual void PauseTick() = 0;
+	virtual void ResumeTick() = 0;
+
 	virtual void UncaughtException(const FString& Exception) = 0;
 
 	//virtual v8::Isolate* isolate() = 0;

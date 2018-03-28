@@ -54,6 +54,7 @@ class V8Module : public IV8
 public:
 	TArray<FString> Paths;
 	JsRuntimeHandle ChakraRuntime = JS_INVALID_RUNTIME_HANDLE;
+	FJavascriptExecStateChangedDelegate OnExecStateChangedDelegate;
 
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override
@@ -126,6 +127,16 @@ public:
 	virtual TArray<FString> GetGlobalScriptSearchPaths() override
 	{
 		return Paths;
+	}
+
+	virtual void SetExecStatusChange(bool Status) override
+	{
+		OnExecStateChangedDelegate.Broadcast(Status);
+	}
+
+	virtual FJavascriptExecStateChangedDelegate& GetExecStatusChangedDelegate() override
+	{
+		return OnExecStateChangedDelegate;
 	}
 
 	virtual void FillAutoCompletion(TSharedPtr<FString> TargetContext, TArray<FString>& OutArray, const TCHAR* Input) override

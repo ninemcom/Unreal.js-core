@@ -1,21 +1,37 @@
 #include "JavascriptEditorTick.h"
+#include "IV8.h"
 #include "ScopedTransaction.h"
 
 #if WITH_EDITOR
 class FJavascriptEditorTick : public FTickableEditorObject
 {
+	bool Tickable;
+	FDelegateHandle ExecStatusChangedHandle;
+
+	UJavascriptEditorTick* Object;
 public:
 	FJavascriptEditorTick(UJavascriptEditorTick* InObject)
 		: Object(InObject)
-	{}
+		, Tickable(true)
+	{
+		ExecStatusChangedHandle = IV8::Get().GetExecStatusChangedDelegate().AddLambda([=](bool Status) {
+			Tickable = Status;
+		});
+	}
 
-	UJavascriptEditorTick* Object;
+	virtual ~FJavascriptEditorTick()
+	{
+		IV8::Get().GetExecStatusChangedDelegate().Remove(ExecStatusChangedHandle);
+	}
 
 	virtual void Tick(float DeltaTime) override
 	{
-		FEditorScriptExecutionGuard ScriptGuard;
+		if (Tickable)
+		{
+			FEditorScriptExecutionGuard ScriptGuard;
 
-		Object->OnTick.ExecuteIfBound(DeltaTime);
+			Object->OnTick.ExecuteIfBound(DeltaTime);
+		}
 	}
 
 	virtual bool IsTickable() const override
