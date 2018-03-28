@@ -249,6 +249,9 @@ public:
 	static void Unload(const FJavascriptStreamableManager& Manager, FStringAssetReference const& Target);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	static UObject* Resolve(const FSoftObjectPath& Path);
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	static bool IsAsyncLoadComplete(const FJavascriptStreamableManager& Manager, FStringAssetReference const& Target);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")

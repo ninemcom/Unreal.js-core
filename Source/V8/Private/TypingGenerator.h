@@ -93,7 +93,7 @@ struct TokenWriter
 		}
 		else if (auto p = Cast<UTextProperty>(Property))
 		{
-			push("string");
+			push("FText");
 		}
 		else if (auto p = Cast<UClassProperty>(Property))
 		{
@@ -541,6 +541,17 @@ struct TypingGenerator : TypingGeneratorBase
 		w.push("declare class UnrealEngineDelegate<T> {\n");
 		w.push("\tAdd(fn : T): void;\n");
 		w.push("\tRemove(fn : T): void;\n");
+		w.push("}\n\n");
+
+		w.push("declare class FText {\n");
+		w.push("\tSource: string;\n");
+		w.push("\tTable: string;\n");
+		w.push("\tKey: string;\n");
+		w.push("\tNamespace: string;\n");
+		w.push("\ttoString(): string;\n");
+		w.push("\tvalueOf(): string;\n");
+		w.push("\tstatic FindText(namespace : string, key : string, source : string = ''): FText;\n");
+		w.push("\tstatic FromStringTable(tableId : string, key : string): FText;\n");
 		w.push("}\n\n");
 
 		w.push("declare class Process {\n");

@@ -36,6 +36,10 @@ struct FV8Config
 		{
 			return TEXT("UFocusEvent");
 		}
+		else if (Name == "Text")
+		{
+			return TEXT("FText");
+		}
 		else
 		{
 			return Name.Replace(TEXT(" "),TEXT(""));

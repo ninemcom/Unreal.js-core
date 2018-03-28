@@ -377,6 +377,17 @@ namespace chakra
 		}
 	}
 
+	static bool HasProperty(JsValueRef Value, const FString& PropertyName)
+	{
+		if (IsEmpty(Value))
+			return false;
+
+		bool ret = false;
+		JsCheck(JsHasProperty(Value, PropertyID(PropertyName), &ret));
+
+		return ret;
+	}
+
 	static TArray<FString> PropertyNames(JsValueRef Value)
 	{
 		TArray<FString> ret;

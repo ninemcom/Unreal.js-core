@@ -716,6 +716,11 @@ void UJavascriptLibrary::Unload(const FJavascriptStreamableManager& Manager, FSt
 	Manager->Unload(Target);
 }
 
+UObject* UJavascriptLibrary::Resolve(const FSoftObjectPath& Path)
+{
+	return Path.ResolveObject();
+}
+
 bool UJavascriptLibrary::IsAsyncLoadComplete(const FJavascriptStreamableManager& Manager, FStringAssetReference const& Target)
 {
 	return Manager->IsAsyncLoadComplete(Target);
@@ -725,7 +730,11 @@ void UJavascriptLibrary::RequestAsyncLoad(const FJavascriptStreamableManager& Ma
 {
 	auto Copy = new FJavascriptFunction;
 	*Copy = DelegateToCall;
+
+	UE_LOG(Javascript, Log, TEXT("request async load"));
+	double start = FPlatformTime::Seconds();
 	Manager->RequestAsyncLoad(TargetsToStream, [=]() {
+		UE_LOG(Javascript, Log, TEXT("async load done, took %.2lfs"), FPlatformTime::Seconds() - start);
 		Copy->Execute();
 		delete Copy;
 	}, Priority);

@@ -852,6 +852,7 @@ class FJavascriptContextImplementation : public FJavascriptContext
 	IDelegateManager* Delegates;
 
 	Persistent<JsValueRef> GlobalTemplate;
+	Persistent<JsValueRef> TextTemplate; // for FText conversion
 
 	// Allocator instance should be set for V8's ArrayBuffer's
 	//FMallocArrayBufferAllocator AllocatorInstance;
@@ -872,6 +873,8 @@ class FJavascriptContextImplementation : public FJavascriptContext
 	Persistent<JsContextRef> context_;
 	IJavascriptDebugger* debugger{ nullptr };
 	IJavascriptInspector* inspector{ nullptr };
+	bool debugRequested = false;
+	int debugPort = 0;
 
 	TMap<FString, UObject*> WKOs;
 	TSet<UObject*> toJsonCache;
@@ -1030,11 +1033,10 @@ public:
 
 	void SetAsDebugContext(int32 InPort)
 	{
-		if (debugger) return;
+		if (debugger || debugRequested) return;
 
-		FContextScope context_scope(context());
-
-		debugger = IJavascriptDebugger::Create(InPort, context());
+		debugRequested = true;
+		debugPort = InPort;
 	}
 
 	bool IsDebugContext() const
@@ -1171,6 +1173,8 @@ public:
 		{
 			ExportEnum(*It);
 		}
+
+		ExportText(ObjectTemplate);
 
 		ExportGC(ObjectTemplate);
 
@@ -1716,6 +1720,107 @@ public:
 		JsCheck(JsCollectGarbage(runtime));
 	}
 
+	void ExportText(JsValueRef GlobalTemplate)
+	{
+		auto func = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			if (!isConstructCall)
+				return chakra::Undefined();
+
+			JsValueRef self = arguments[0];
+			check(argumentCount > 1);
+
+			if (argumentCount == 2)
+			{
+				check(chakra::IsString(arguments[1]));
+				chakra::SetProperty(self, "Source", arguments[1]);
+			}
+			else if (argumentCount == 3)
+			{
+				check(chakra::IsString(arguments[1]));
+				check(chakra::IsString(arguments[2]));
+				chakra::SetProperty(self, "Table", arguments[1]);
+				chakra::SetProperty(self, "Key", arguments[2]);
+			}
+			else if (argumentCount == 4)
+			{
+				check(chakra::IsString(arguments[1]));
+				check(chakra::IsString(arguments[2]));
+				check(chakra::IsString(arguments[3]));
+				chakra::SetProperty(self, "Namespace", arguments[1]);
+				chakra::SetProperty(self, "Key", arguments[2]);
+				chakra::SetProperty(self, "Source", arguments[3]);
+			}
+
+			return chakra::Undefined();
+		};
+
+		auto funcFindText = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			if (argumentCount < 4)
+				return chakra::Undefined();
+
+			JsValueRef Template = reinterpret_cast<JsValueRef>(callbackState);
+			JsValueRef Instance = JS_INVALID_REFERENCE;
+			JsCheck(JsConstructObject(Template, arguments, 4, &Instance));
+
+			return Instance;
+		};
+
+		auto funcFromStringTable = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			if (argumentCount < 3)
+				return chakra::Undefined();
+
+			JsValueRef Template = reinterpret_cast<JsValueRef>(callbackState);
+			JsValueRef Instance = JS_INVALID_REFERENCE;
+			JsCheck(JsConstructObject(Template, arguments, 3, &Instance));
+
+			return Instance;
+		};
+
+		auto funcToString = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
+			JsValueRef Self = arguments[0];
+			FText Text = FText::GetEmpty();
+
+			if (chakra::HasProperty(Self, "Table"))
+			{
+				JsValueRef Table = chakra::GetProperty(Self, "Table");
+				JsValueRef Key = chakra::GetProperty(Self, "Key");
+				Text = FText::FromStringTable(*chakra::StringFromChakra(Table), chakra::StringFromChakra(Key));
+			}
+			else if (chakra::HasProperty(Self, "Namespace"))
+			{
+				JsValueRef Source = chakra::GetProperty(Self, "Source");
+				JsValueRef Namespace = chakra::GetProperty(Self, "Namespace");
+				JsValueRef Key = chakra::GetProperty(Self, "Key");
+
+				if (!FText::FindText(chakra::StringFromChakra(Namespace), chakra::StringFromChakra(Key), Text))
+					Text = FText::FromString(chakra::StringFromChakra(Source));
+			}
+			else if (chakra::HasProperty(Self, "Source"))
+			{
+				Text = FText::FromString(chakra::StringFromChakra(chakra::GetProperty(Self, "Source")));
+			}
+			else
+			{
+				UE_LOG(Javascript, Warning, TEXT("Could not detext text type from object"));
+			}
+
+			return chakra::String(Text.ToString());
+		};
+
+		JsValueRef tmpl = JS_INVALID_REFERENCE;
+		JsCheck(JsCreateNamedFunction(chakra::String("FText"), func, nullptr, &tmpl));
+
+		JsValueRef prototype = chakra::GetProperty(tmpl, "prototype");
+		chakra::SetProperty(tmpl, "FromStringTable", chakra::FunctionTemplate(funcFromStringTable));
+		chakra::SetProperty(tmpl, "FindText", chakra::FunctionTemplate(funcFindText));
+		chakra::SetProperty(prototype, "toString", chakra::FunctionTemplate(funcToString));
+		chakra::SetProperty(prototype, "valueOf", chakra::FunctionTemplate(funcToString));
+
+		chakra::SetProperty(GlobalTemplate, "FText", tmpl);
+
+		this->TextTemplate.Reset(tmpl);
+	}
+
 	void ExportGC(JsValueRef GlobalTemplate)
 	{
 		auto func = [](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) {
@@ -2124,6 +2229,14 @@ public:
 
 	bool HandleTicker(float DeltaTime)
 	{
+		if (debugRequested)
+		{
+			FContextScope scope(context());
+			debugger = IJavascriptDebugger::Create(debugPort, context());
+			debugRequested = false;
+		}
+
+		if (debugger == nullptr || !debugger->IsBreak())
 		{
 			TArray<JsValueRef> tasksCopy(const_cast<const TArray<JsValueRef>&>(PromiseTasks));
 			PromiseTasks.Empty();
@@ -4427,7 +4540,41 @@ JsValueRef FJavascriptContextImplementation::ConvertValue<FString>(const FString
 template <>
 JsValueRef FJavascriptContextImplementation::ConvertValue<FText>(const FText& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
-	return chakra::String(cValue.ToString());
+	FName TableID;
+	FString Key;
+
+	if (FTextInspector::GetTableIdAndKey(cValue, TableID, Key))
+	{
+		JsValueRef tableBuilder = RunScript("", "(table, key) => new FText(table, key)");
+		JsValueRef args[] = { chakra::Undefined(), chakra::String(TableID.ToString()), chakra::String(Key) };
+		JsValueRef ret = JS_INVALID_REFERENCE;
+		JsCheck(JsCallFunction(tableBuilder, args, 3, &ret));
+
+		return ret;
+	}
+
+	FString Namespace = FTextInspector::GetNamespace(cValue).Get("");
+	Key = FTextInspector::GetKey(cValue).Get("");
+	const FString *Source = FTextInspector::GetSourceString(cValue);
+
+	if (!Namespace.IsEmpty())
+	{
+		JsValueRef namespaceBuilder = RunScript("", "(ns, key, src) => new FText(ns, key, src)");
+		JsValueRef args[] = { chakra::Undefined(), chakra::String(Namespace), chakra::String(Key), chakra::String(*Source) };
+		JsValueRef ret = JS_INVALID_REFERENCE;
+		JsCheck(JsCallFunction(namespaceBuilder, args, 4, &ret));
+
+		return ret;
+	}
+	else
+	{
+		JsValueRef stringBuilder = RunScript("", "str => new FText(str)");
+		JsValueRef args[] = { chakra::Undefined(), chakra::String(*Source) };
+		JsValueRef ret = JS_INVALID_REFERENCE;
+		JsCheck(JsCallFunction(stringBuilder, args, 2, &ret));
+
+		return ret;
+	}
 }
 
 template <>
@@ -4599,7 +4746,39 @@ void FJavascriptContextImplementation::FromValue<FString>(FString* Ptr, UPropert
 template<>
 void FJavascriptContextImplementation::FromValue<FText>(FText* Ptr, UProperty* Property, JsValueRef Value)
 {
-	Cast<UTextProperty>(Property)->SetPropertyValue(Ptr, FText::FromString(chakra::StringFromChakra(Value)));
+	if (chakra::IsString(Value))
+	{
+		Cast<UTextProperty>(Property)->SetPropertyValue(Ptr, FText::FromString(chakra::StringFromChakra(Value)));
+	}
+	else if (chakra::IsObject(Value))
+	{
+		FText Text = FText::GetEmpty();
+		if (chakra::HasProperty(Value, "Table"))
+		{
+			JsValueRef Table = chakra::GetProperty(Value, "Table");
+			JsValueRef Key = chakra::GetProperty(Value, "Key");
+			Text = FText::FromStringTable(*chakra::StringFromChakra(Table), chakra::StringFromChakra(Key));
+		}
+		else if (chakra::HasProperty(Value, "Namespace"))
+		{
+			JsValueRef Source = chakra::GetProperty(Value, "Source");
+			JsValueRef Namespace = chakra::GetProperty(Value, "Namespace");
+			JsValueRef Key = chakra::GetProperty(Value, "Key");
+
+			if (!FText::FindText(chakra::StringFromChakra(Namespace), chakra::StringFromChakra(Key), Text))
+				Text = FText::FromString(chakra::StringFromChakra(Source));
+		}
+		else if (chakra::HasProperty(Value, "Source"))
+		{
+			Text = FText::FromString(chakra::StringFromChakra(chakra::GetProperty(Value, "Source")));
+		}
+		else
+		{
+			UE_LOG(Javascript, Warning, TEXT("Could not detext text type from object"));
+		}
+
+		Cast<UTextProperty>(Property)->SetPropertyValue(Ptr, Text);
+	}
 }
 
 template<>

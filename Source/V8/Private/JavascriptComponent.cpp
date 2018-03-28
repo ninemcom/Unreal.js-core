@@ -25,13 +25,23 @@ void UJavascriptComponent::OnRegister()
 	{
 		if (GetWorld() && ((GetWorld()->IsGameWorld() && !GetWorld()->IsPreviewWorld()) || bActiveWithinEditor))
 		{
+			double start = FPlatformTime::Seconds();
 			auto Context = NewObject<UJavascriptContext>();
+			UE_LOG(Javascript, Log, TEXT("took %.2lfs to create context"), FPlatformTime::Seconds() - start);
 
 			JavascriptContext = Context;
 
+			start = FPlatformTime::Seconds();
 			Context->Expose("Root", this);
+			UE_LOG(Javascript, Log, TEXT("took %.2lfs to expose Root"), FPlatformTime::Seconds() - start);
+
+			start = FPlatformTime::Seconds();
 			Context->Expose("GWorld", GetWorld());
+			UE_LOG(Javascript, Log, TEXT("took %.2lfs to expose GWorld"), FPlatformTime::Seconds() - start);
+
+			start = FPlatformTime::Seconds();
 			Context->Expose("GEngine", GEngine);
+			UE_LOG(Javascript, Log, TEXT("took %.2lfs to expose GEngine"), FPlatformTime::Seconds() - start);
 		}
 	}
 
@@ -44,7 +54,9 @@ void UJavascriptComponent::Activate(bool bReset)
 
 	if (JavascriptContext)
 	{
+		double start = FPlatformTime::Seconds();
 		JavascriptContext->RunFile(*ScriptSourceFile);
+		UE_LOG(Javascript, Log, TEXT("script %s run for %.2lfs"), *ScriptSourceFile, FPlatformTime::Seconds() - start);
 
 		SetComponentTickEnabled(OnTick.IsBound());	
 	}
