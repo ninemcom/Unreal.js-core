@@ -2265,6 +2265,20 @@ public:
 			for (JsValueRef task : tasksCopy)
 			{
 				JsCheck(JsCallFunction(task, &global, 1, &dummy));
+
+				bool hasException = false;
+				JsCheck(JsHasException(&hasException));
+				if (hasException)
+				{
+					JsValueRef exception = JS_INVALID_REFERENCE;
+					JsCheck(JsGetAndClearException(&exception));
+
+					JsValueRef stackValue = chakra::GetProperty(exception, "stack");
+					FString strErr = chakra::StringFromChakra(exception);
+					FString stack = chakra::StringFromChakra(stackValue);
+					UncaughtException(strErr + " " + stack);
+				}
+				
 				JsCheck(JsRelease(task, nullptr));
 			}
 		}
@@ -2373,10 +2387,7 @@ public:
 			JsValueRef exception = JS_INVALID_REFERENCE;
 			JsCheck(JsGetAndClearException(&exception));
 
-			JsValueRef stackValue = chakra::GetProperty(exception, "stack");
-			FString strErr = chakra::StringFromChakra(exception);
-			FString stack = chakra::StringFromChakra(stackValue);
-			UncaughtException(strErr + " " + stack);
+			UncaughtException(FV8Exception::Report(exception));
 			return JS_INVALID_REFERENCE;
 		}
 
@@ -4503,6 +4514,9 @@ public:
 
 	void OnGarbageCollectedByChakra(UObject* Object)
 	{
+		if (!Object->IsValidLowLevelFast())
+			return;
+
 		if (UClass* klass = Cast<UClass>(Object))
 		{
 			ClassToFunctionTemplateMap.Remove(klass);
@@ -4712,7 +4726,7 @@ JsValueRef FJavascriptContextImplementation::ConvertValue<FScriptMap>(const FScr
 		JsValueRef Key = InternalReadProperty(mapProperty->KeyProp, PairPtr + mapProperty->MapLayout.KeyOffset, Owner);
 		JsValueRef Value = InternalReadProperty(mapProperty->ValueProp, PairPtr, Owner);
 
-		chakra::SetProperty(Out, chakra::StringFromChakra(Key), Value);
+		JsCheck(JsSetIndexedProperty(Out, Key, Value));
 	}
 
 	return Out;
@@ -5190,8 +5204,7 @@ void FJavascriptFunction::Execute()
 				JsValueRef exception = JS_INVALID_REFERENCE;
 				JsCheck(JsGetAndClearException(&exception));
 
-				exception = chakra::GetProperty(exception, "stack");
-				FJavascriptContext::FromChakra(context)->UncaughtException(chakra::StringFromChakra(exception));
+				FJavascriptContext::FromChakra(context)->UncaughtException(FV8Exception::Report(exception));
 			}
 			else if (error != JsNoError)
 			{

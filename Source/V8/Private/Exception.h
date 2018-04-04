@@ -1,22 +1,19 @@
 #pragma once
 
 #include "V8PCH.h"
+#include "Helpers.h"
 #include "Translator.h"
 
 using namespace chakra;
 
 struct FV8Exception
 {
-	static FString Report(JsValueRef Exception)
+	static FString Report(JsValueRef exception)
 	{
-		JsValueRef ExceptionString = JS_INVALID_REFERENCE;
-		JsErrorCode convertErr = JsConvertValueToString(Exception, &ExceptionString);
-		check(convertErr == JsNoError);
-
-		FString exception = StringFromChakra(ExceptionString);
-		UE_LOG(Javascript, Error, TEXT("%s"), *exception);
-
-		return exception;
+		JsValueRef stackValue = chakra::GetProperty(exception, "stack");
+		FString strErr = chakra::StringFromChakra(exception);
+		FString stack = chakra::StringFromChakra(stackValue);
+		return strErr + " " + stack;
 
 		//if (!exception.IsEmpty())
 		//{

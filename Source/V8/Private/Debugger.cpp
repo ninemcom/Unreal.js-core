@@ -189,11 +189,11 @@ public:
 		JsCheck(JsGetRuntime(context(), &runtime));
 
 		JsValueRef stringifier = JS_INVALID_REFERENCE;
-		JsCheck(JsRunScript(TEXT("JSON.stringify"), 0, TEXT(""), &stringifier));
+		JsCheck(JsRun(chakra::String("JSON.stringify"), 0, chakra::String(""), JsParseScriptAttributeNone, &stringifier));
 		jsonStringifier.Reset(stringifier);
 
 		JsValueRef parser = JS_INVALID_REFERENCE;
-		JsCheck(JsRunScript(TEXT("JSON.parse"), 0, TEXT(""), &parser));
+		JsCheck(JsRun(chakra::String("JSON.parse"), 0, chakra::String(""), JsParseScriptAttributeNone, &stringifier));
 		jsonParser.Reset(parser);
 
 		JsCheck(JsDiagStartDebugging(runtime, HandleDebugEvents, this));
@@ -376,7 +376,7 @@ public:
 		for (const FString& cmd : commands)
 		{
 			JsValueRef cmdValue = JS_INVALID_REFERENCE;
-			JsCheck(JsRunScript(*FString::Printf(TEXT("(() => (%s))()"), *cmd), 0, TEXT(""), &cmdValue));
+			JsCheck(JsRun(chakra::String(FString::Printf(TEXT("(() => (%s))()"), *cmd)), 0, chakra::String(""), JsParseScriptAttributeNone, &cmdValue));
 
 			VAR_STR(cmdValue, command);
 			JsValueRef argument = chakra::GetProperty(cmdValue, "arguments");
