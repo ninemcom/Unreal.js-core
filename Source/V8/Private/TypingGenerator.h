@@ -143,7 +143,13 @@ struct TokenWriter
 			push(p->SignatureFunction);
 			push(">");
 		}
-		else if (auto p = Cast<UObjectProperty>(Property))
+		else if (auto p = Cast<USoftObjectProperty>(Property))
+		{
+			push("SoftObject<");
+			push(FV8Config::Safeify(p->PropertyClass->GetName()));
+			push(">");
+		}
+		else if (auto p = Cast<UObjectPropertyBase>(Property))
 		{
 			generator.Export(p->PropertyClass);
 			push(FV8Config::Safeify(p->PropertyClass->GetName()));
@@ -552,6 +558,12 @@ struct TypingGenerator : TypingGeneratorBase
 		w.push("\tvalueOf(): string;\n");
 		w.push("\tstatic FindText(namespace : string, key : string, source : string = ''): FText;\n");
 		w.push("\tstatic FromStringTable(tableId : string, key : string): FText;\n");
+		w.push("}\n\n");
+
+		w.push("declare class SoftObject<T> {\n");
+		w.push("\tAssetPathName: string;");
+		w.push("\tSubPathString: string;");
+		w.push("\tResolve(): T;");
 		w.push("}\n\n");
 
 		w.push("declare class Process {\n");

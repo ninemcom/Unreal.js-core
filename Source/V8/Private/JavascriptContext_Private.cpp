@@ -1886,7 +1886,7 @@ public:
 					FString parent = relative_path.Mid(parentIdx, idx - parentIdx);
 					if (parent == "..")
 					{
-						pos = idx;
+						pos = idx + 1;
 						continue;
 					}
 
@@ -1911,10 +1911,13 @@ public:
 				{
 					Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports, require = specifier => global.require(__filename, specifier); (function () { %s\n })();\nreturn module.exports;})(this,'%s', '%s');"), *Text, *relative_path, *FPaths::GetPath(relative_path));
 					JsValueRef exports = Self->RunScript(full_path, Text);
+
 					if (chakra::IsEmpty(exports))
 					{
 						UE_LOG(Javascript, Log, TEXT("Invalid script for require"));
+						return false;
 					}
+
 					Self->Modules.Add(full_path, exports);
 					returnValue = exports;
 					found = true;
@@ -2071,6 +2074,7 @@ public:
 
 			if (!found)
 			{
+				UE_LOG(Javascript, Log, TEXT("Cannot find %s from %s"), *required_module, *current_script);
 				return chakra::Undefined();
 			}
 
@@ -2849,6 +2853,10 @@ public:
 		{
 			return InternalReadSealedArray<FScriptArray>(Property, Buffer, Owner);
 		}
+		else if (auto p = Cast<USoftObjectProperty>(Property))
+		{
+			return InternalReadSealedArray<FSoftObjectPtr>(Property, Buffer, Owner);
+		}
 		else if (auto p = Cast<UObjectPropertyBase>(Property))
 		{
 			return InternalReadSealedArray<UObject*>(Property, Buffer, Owner);
@@ -2996,6 +3004,10 @@ public:
 		else if (auto p = Cast<UEnumProperty>(Property))
 		{
 			return InternalWriteSealedArray<uint8>(Property, Buffer, Value);
+		}
+		else if (auto p = Cast<USoftObjectProperty>(Property))
+		{
+			return InternalWriteSealedArray<FSoftObjectPtr>(Property, Buffer, Value);
 		}
 		else if (auto p = Cast<UObjectPropertyBase>(Property))
 		{
@@ -3571,9 +3583,9 @@ public:
 			// Call unreal engine function!
 			return CallFunction(self, Function, Object, [&](int ArgIndex) {
 				// pass an argument if we have
-				if (ArgIndex < argumentCount)
+				if (ArgIndex + 1 < argumentCount)
 				{
-					return arguments[ArgIndex];
+					return arguments[ArgIndex + 1];
 				}
 				// Otherwise, just return undefined.
 				else
@@ -4702,6 +4714,12 @@ JsValueRef FJavascriptContextImplementation::ConvertValue<UClass*>(UClass* const
 }
 
 template <>
+JsValueRef FJavascriptContextImplementation::ConvertValue<FSoftObjectPtr>(FSoftObjectPtr const& cValue, UProperty* Property, const IPropertyOwner& Owner)
+{
+	return ExportStructInstance(TBaseStructure<FSoftObjectPath>::Get(), (uint8*)&cValue.ToSoftObjectPath(), Owner);
+}
+
+template <>
 JsValueRef FJavascriptContextImplementation::ConvertValue<UObject*>(UObject* const& cValue, UProperty* Property, const IPropertyOwner& Owner)
 {
 	UObjectPropertyBase* objProperty = CastChecked<UObjectPropertyBase>(Property);
@@ -4941,6 +4959,37 @@ void FJavascriptContextImplementation::FromValue<FScriptMap>(FScriptMap* Ptr, UP
 			InternalWriteProperty(mapProperty->KeyProp, PairPtr + mapProperty->MapLayout.KeyOffset, Key);
 			InternalWriteProperty(mapProperty->ValueProp, PairPtr, Value);
 		}
+	}
+}
+
+template <>
+void FJavascriptContextImplementation::FromValue<FSoftObjectPtr>(FSoftObjectPtr* Ptr, UProperty* Property, JsValueRef Value)
+{
+	USoftObjectProperty* softObjProperty = Cast<USoftObjectProperty>(Property);
+	if (chakra::IsString(Value))
+	{
+		softObjProperty->SetPropertyValue(Ptr, FSoftObjectPtr(FSoftObjectPath(chakra::StringFromChakra(Value))));
+	}
+	else if (chakra::IsObject(Value))
+	{
+		UObject* Instance = chakra::UObjectFromChakra(Value);
+		if (Instance)
+		{
+			softObjProperty->SetPropertyValue(Ptr, FSoftObjectPtr(Instance));
+		}
+		else
+		{
+			// maybe path
+			JsValueRef AssetPathName = chakra::GetProperty(Value, "AssetPathName");
+			JsValueRef SubPathString = chakra::GetProperty(Value, "SubPathString");
+
+			softObjProperty->SetPropertyValue(Ptr, FSoftObjectPtr(FSoftObjectPath(*chakra::StringFromChakra(AssetPathName), chakra::StringFromChakra(SubPathString))));
+		}
+	}
+	else
+	{
+		// invalid
+		softObjProperty->SetObjectPropertyValue(Ptr, nullptr);
 	}
 }
 
