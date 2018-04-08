@@ -878,7 +878,6 @@ class FJavascriptContextImplementation : public FJavascriptContext
 	int debugPort = 0;
 
 	TMap<FString, UObject*> WKOs;
-	TSet<UObject*> toJsonCache;
 
 public:
 	JsContextRef context() override { return context_.Get(); }
@@ -3906,18 +3905,10 @@ public:
 			// class info
 			chakra::SetProperty(out, "__class", chakra::String(Class->GetPathName()));
 
-			auto& toJsonCache = GetSelf()->toJsonCache;
-			bool doCleanup = toJsonCache.Num() == 0;
-
 			if (Class->IsA<UClass>())
 			{
 				UObject* _self = chakra::UObjectFromChakra(self);
 				check(_self);
-
-				if (toJsonCache.Contains(_self))
-					return chakra::Undefined(); // break circular referencing
-
-				toJsonCache.Add(_self);
 			}
 
 			for (TFieldIterator<UProperty> PropertyIt(Class, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
@@ -3958,9 +3949,6 @@ public:
 					chakra::SetProperty(out, name, value);
 				}
 			}
-
-			if (doCleanup)
-				toJsonCache.Empty();
 
 			return out;
 		};
