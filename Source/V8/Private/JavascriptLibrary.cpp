@@ -731,10 +731,10 @@ void UJavascriptLibrary::RequestAsyncLoad(const FJavascriptStreamableManager& Ma
 	auto Copy = new FJavascriptFunction;
 	*Copy = DelegateToCall;
 
-	UE_LOG(Javascript, Log, TEXT("request async load"));
+	UE_LOG(Javascript, Verbose, TEXT("request async load"));
 	double start = FPlatformTime::Seconds();
 	Manager->RequestAsyncLoad(TargetsToStream, [=]() {
-		UE_LOG(Javascript, Log, TEXT("async load done, took %.2lfs"), FPlatformTime::Seconds() - start);
+		UE_LOG(Javascript, Verbose, TEXT("async load done, took %.2lfs"), FPlatformTime::Seconds() - start);
 		Copy->Execute();
 		delete Copy;
 	}, Priority);
