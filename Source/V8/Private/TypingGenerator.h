@@ -93,7 +93,7 @@ struct TokenWriter
 		}
 		else if (auto p = Cast<UTextProperty>(Property))
 		{
-			push("FText");
+			push("(FText|string)");
 		}
 		else if (auto p = Cast<UClassProperty>(Property))
 		{
