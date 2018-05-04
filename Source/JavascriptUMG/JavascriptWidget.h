@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CoreMinimal.h"
 #include "UserWidget.h"
 #include "Components/PanelSlot.h"
 #include "JavascriptWidget.generated.h"
@@ -45,6 +46,9 @@ public:
 	UFUNCTION(BlueprintNativeEvent, Category = "Scripting | Javascript")
 	void OnInputActionByName(FName ActionName);
 
+	UFUNCTION(BlueprintNativeEvent, Category = "Scripting | Javascript")
+	void OnReleaseInputActionByName(FName ActionName);
+
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
 	void OnListenForInputAxis(FName AxisName, TEnumAsByte< EInputEvent > EventType, bool bConsume);
 
@@ -53,6 +57,9 @@ public:
 	
 	UPROPERTY(BlueprintAssignable, Category = "Scripting | Javascript")
 	FOnInputActionEvent OnInputActionEvent;
+
+	UPROPERTY(BlueprintAssignable, Category = "Scripting | Javascript")
+	FOnInputActionEvent OnReleaseActionEvent;
 
 	UPROPERTY(BlueprintAssignable, Category = "Scripting | Javascript")
 	FOnInputAxisEvent OnInputAxisEvent;

@@ -4,6 +4,7 @@
 #if WITH_JSWEBSOCKET
 
 #include "JSWebSocket.h"
+#include "IPAddress.h"
 #include "JavascriptWebSocketModule.h"
 
 #include "IPAddress.h"

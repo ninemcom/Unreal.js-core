@@ -1,6 +1,7 @@
 #include "JavascriptPropertyCustomizationLibrary.h"
 #include "IPropertyTypeCustomization.h"
 #include "IDetailChildrenBuilder.h"
+#include "JavascriptPropertyCustomization.h"
 
 #if WITH_EDITOR
 FJavascriptPropertyHandle UJavascriptPropertyCustomizationLibrary::GetChildHandle(FJavascriptPropertyHandle Parent, FName Name)
@@ -36,11 +37,11 @@ UProperty* UJavascriptPropertyCustomizationLibrary::GetProperty(FJavascriptPrope
 {
 	return Handle->GetProperty();
 }
-void UJavascriptPropertyCustomizationLibrary::SetOnPropertyValueChanged(FJavascriptPropertyHandle Handle, FJavascriptFunction Function)
+void UJavascriptPropertyCustomizationLibrary::SetOnPropertyValueChanged(FJavascriptPropertyHandle Handle, UJavascriptPropertyCustomization* Custom)
 {
 	FSimpleDelegate Delegate;
-	Delegate.BindLambda([=] () {
-		((FJavascriptFunction*)&Function)->Execute();
+	Delegate.BindLambda([Custom]() {
+		Custom->OnPropertyValueChanged.Broadcast();
 	});
 	Handle->SetOnPropertyValueChanged(Delegate);
 }

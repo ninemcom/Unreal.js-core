@@ -5,7 +5,6 @@
 #include "JavascriptContext.h"
 #include "Engine/StreamableManager.h"
 #include "AI/Navigation/RecastNavMesh.h"
-#include "Model.h"
 #include "JavascriptLibrary.generated.h"
 
 class FInternetAddr;
@@ -68,6 +67,19 @@ enum class EJavascriptStatDataType : uint8
 	ST_Ptr,
 };
 
+UENUM()
+namespace EJavascriptEncodingOptions
+{
+	/** Ordered according to their severity */
+	enum Type
+	{
+		AutoDetect = 0,
+		ForceAnsi,
+		ForceUnicode,
+		ForceUTF8,
+		ForceUTF8WithoutBOM
+	};
+}
 
 /**
 * The operation being performed by this message
@@ -351,7 +363,7 @@ public:
 	static FString ReadStringFromFile(UObject* Object, FString Filename);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
-	static bool WriteStringToFile(UObject* Object, FString Filename, const FString& Data);
+	static bool WriteStringToFile(UObject* Object, FString Filename, const FString& Data, EJavascriptEncodingOptions::Type EncodingOptions);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	static FString GetDir(UObject* Object, FString WhichDir);

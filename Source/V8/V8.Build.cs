@@ -76,8 +76,6 @@ public class V8 : ModuleRules
             });
         }
 
-        bEnableExceptions = true;
-
         LoadV8(Target);
     }
 
@@ -134,17 +132,16 @@ public class V8 : ModuleRules
 
             if (node_version[0] >= 6)
             {
-                //PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_builtins_setup.lib"));
-                //PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_builtins_generators.lib"));
+                //PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_init.lib"));
+                //PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_initializers.lib"));
             }
 
             if (ShouldLink_libsampler)
             {
                 //PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_libsampler.lib"));
             }
-            
 
-            Definitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
+            PublicDefinitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
 
             return true;
         }
@@ -153,7 +150,7 @@ public class V8 : ModuleRules
             string LibrariesPath = Path.Combine(ThirdPartyPath, "chakracore", "lib", "Android");
 
             PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "ARMv7", "libChakraCoreStatic.a"));
-            Definitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
+            PublicDefinitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
 
             return true;
         }
@@ -169,8 +166,8 @@ public class V8 : ModuleRules
 
             if (node_version[0] >= 6)
             {
-                PublicAdditionalLibraries.Add("v8_builtins_setup");
-                PublicAdditionalLibraries.Add("v8_builtins_generators");                
+                PublicAdditionalLibraries.Add("v8_init");
+                PublicAdditionalLibraries.Add("v8_initializers");
             }
 
             if (ShouldLink_libsampler)
@@ -178,7 +175,7 @@ public class V8 : ModuleRules
                 PublicAdditionalLibraries.Add("v8_libsampler");
             }
 
-            Definitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
+            PublicDefinitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
 
             return true;
         }
@@ -188,7 +185,7 @@ public class V8 : ModuleRules
             PublicLibraryPaths.Add(LibrariesPath);
 
             PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libChakraCoreStatic.a"));
-            Definitions.Add("WITH_CHAKRA_CORE=1");
+            PublicDefinitions.Add("WITH_CHAKRA_CORE=1");
 
             return true;
         }
@@ -206,11 +203,11 @@ public class V8 : ModuleRules
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libChakraCoreStatic.a"));
             }
 
-            Definitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
+            PublicDefinitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
 
             return true;
         }
-        Definitions.Add(string.Format("WITH_CHAKRA_CORE=0"));
+        PublicDefinitions.Add(string.Format("WITH_CHAKRA_CORE=0"));
         return false;
     }
 }

@@ -1,10 +1,12 @@
 PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #include "JavascriptEditorTab.h"
+#if WITH_EDITOR
 #include "Button.h"
 #include "SSpacer.h"
-#include "WorkspaceMenuStructureModule.h"
 #include "WorkspaceMenuStructure.h"
+#include "WorkspaceMenuStructureModule.h"
+#endif
 
 UJavascriptEditorTab::UJavascriptEditorTab(const FObjectInitializer& ObjectInitializer)
 : Super(ObjectInitializer)

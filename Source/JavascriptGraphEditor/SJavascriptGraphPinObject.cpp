@@ -2,13 +2,13 @@
 
 #include "SJavascriptGraphPinObject.h"
 #include "Modules/ModuleManager.h"
-#include "Widgets/SBoxPanel.h"
 #include "Widgets/Images/SImage.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboButton.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SWrapBox.h"
+#include "Widgets/SBoxPanel.h"
 #include "Editor.h"
 #include "IContentBrowserSingleton.h"
 #include "ContentBrowserModule.h"
@@ -322,7 +322,7 @@ FText SJavascriptGraphPinObject::GetValue() const
 	{
 		if (GraphPinObj->GetSchema()->IsSelfPin(*GraphPinObj))
 		{
-			Value = FText::FromString(GraphPinObj->PinName);
+			Value = FText::FromName(GraphPinObj->PinName);
 		}
 		else
 		{

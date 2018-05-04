@@ -5,6 +5,7 @@
 #include "JavascriptLibrary.h"
 
 #if NODE_PROFILING
+#include "v8-profiler.h"
 
 using namespace v8;
 

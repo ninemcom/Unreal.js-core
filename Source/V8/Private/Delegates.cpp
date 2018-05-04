@@ -6,6 +6,7 @@
 #include "Helpers.h"
 #include "JavascriptStats.h"
 #include "UObject/GCObject.h"
+#include "V8PCH.h"
 
 PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
@@ -341,12 +342,17 @@ struct FDelegateManager : chakra::IDelegateManager
 			if (!d->IsValid())
 			{
 				it.RemoveCurrent();
+				d.Reset();
 			}
 		}
 	}
 
 	void PurgeAllDelegates()
 	{
+		for (auto& d : Delegates)
+		{
+			d.Reset();
+		}
 		Delegates.Empty();
 	}
 
@@ -403,6 +409,13 @@ UJavascriptDelegate::UJavascriptDelegate()
 void UJavascriptDelegate::BeginDestroy()
 {
 	IV8::Get().GetExecStatusChangedDelegate().Remove(PausedHandle);
+
+	const bool bIsClassDefaultObject = IsTemplate(RF_ClassDefaultObject);
+	if (!bIsClassDefaultObject)
+	{
+		JavascriptDelegate.Reset();
+	}
+
 	Super::BeginDestroy();
 }
 

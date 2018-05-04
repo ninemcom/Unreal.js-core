@@ -1,7 +1,9 @@
 #pragma once
 
+#include "CoreMinimal.h"
 #include "UMG.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "Blueprint/UserWidget.h"
 #include "JavascriptMultiLineEditableTextBox.h"
 #include "JavascriptTextModel.h"
 #include "JavascriptUMGBlueprintLibrary.generated.h"

@@ -3,6 +3,13 @@
 #include "CurveSequence.h"
 #include "JavascriptConsoleModule.h"
 
+namespace EJavascriptConsoleStyle
+{
+	enum Type;
+};
+struct FJavascriptConsoleDelegates;
+class FJavascriptConsoleModule;
+
 /**
  * Debug console widget, designed to be summoned on top of a viewport or window
  */

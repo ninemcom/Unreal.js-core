@@ -3,6 +3,7 @@
 #include "V8PCH.h"
 #include "Helpers.h"
 #include "Translator.h"
+#include "V8PCH.h"
 
 using namespace chakra;
 

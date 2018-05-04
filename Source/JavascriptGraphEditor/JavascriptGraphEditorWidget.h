@@ -110,6 +110,9 @@ class JAVASCRIPTGRAPHEDITOR_API UJavascriptGraphEditorWidget : public UWidget
 	UFUNCTION(BlueprintCallable, Category = Content)
 	void JumpToPin(FJavascriptEdGraphPin JumpToMe);
 
+	UFUNCTION(BlueprintCallable, Category = Content)
+	FVector2D GetPasteLocation();
+
 protected:
 	// UWidget interface
 	virtual TSharedRef<SWidget> RebuildWidget() override;

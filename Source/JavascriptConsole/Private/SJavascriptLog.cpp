@@ -3,6 +3,7 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "SJavascriptLog.h"
 #include "EditorStyleSettings.h"
 #include "SScrollBorder.h"
+#include "SlateBasics.h"
 #include "BaseTextLayoutMarshaller.h"
 #include "GameFramework/GameMode.h"
 #include "Engine/LocalPlayer.h"
@@ -355,7 +356,7 @@ void SJavascriptConsoleInputBox::OnTextCommitted( const FText& InText, ETextComm
 	{
 		if (!InText.IsEmpty())
 		{
-			IConsoleManager::Get().AddConsoleHistoryEntry( *InText.ToString() );
+			IConsoleManager::Get().AddConsoleHistoryEntry(TEXT(""), *InText.ToString() );
 
 			// Copy the exec text string out so we can clear the widget's contents.  If the exec command spawns
 			// a new window it can cause the text box to lose focus, which will result in this function being
@@ -443,7 +444,7 @@ FReply SJavascriptConsoleInputBox::OnPreviewKeyDown(const FGeometry& MyGeometry,
 		{
 			TArray<FString> History;
 
-			IConsoleManager::Get().GetConsoleHistory(History);
+			IConsoleManager::Get().GetConsoleHistory(TEXT(""), History);
 
 			SetSuggestions(History, true);
 			

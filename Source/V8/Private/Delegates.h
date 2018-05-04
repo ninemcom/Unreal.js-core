@@ -4,6 +4,11 @@
 
 namespace chakra
 {
+	class Isolate;
+	template <class T> class Local;
+	class Object;
+	class Value;
+
 	struct IDelegateManager
 	{
 		static IDelegateManager* Create();

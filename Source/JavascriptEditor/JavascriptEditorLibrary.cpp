@@ -6,6 +6,7 @@
 #define WITH_KISSFFT 0
 #endif
 
+#include "AssetRegistryModule.h"
 #include "Editor/LandscapeEditor/Private/LandscapeEdModeTools.h"
 #include "JavascriptContext.h"
 #include "DynamicMeshBuilder.h"
@@ -39,6 +40,8 @@
 #include "Engine/LevelStreaming.h"
 #include "VisualLogger/VisualLogger.h"
 #include "JavascriptUICommands.h"
+#include "WorkspaceMenuStructure.h"
+#include "WorkspaceMenuStructureModule.h"
 
 #include "Developer/MessageLog/Public/MessageLogModule.h"
 #include "Developer/MessageLog/Public/IMessageLogListing.h"
@@ -230,7 +233,11 @@ bool UJavascriptEditorLibrary::IsAssetLoaded(const FJavascriptAssetData& AssetDa
 
 bool UJavascriptEditorLibrary::EditorDestroyActor(UWorld* World, AActor* Actor, bool bShouldModifyLevel)
 {
-	return World->EditorDestroyActor(Actor, bShouldModifyLevel);
+	if (World && Actor)
+	{
+		return World->EditorDestroyActor(Actor, bShouldModifyLevel);
+	}
+	return false;
 }
 
 void UJavascriptEditorLibrary::SetIsTemporarilyHiddenInEditor(AActor* Actor, bool bIsHidden)
@@ -437,9 +444,9 @@ void UJavascriptEditorLibrary::DrawWireDiamond(const FJavascriptPDI& PDI, const 
 {
 	::DrawWireDiamond(PDI.PDI, Transform.ToMatrixWithScale(), Size, InColor, DepthPriority);
 }
-void UJavascriptEditorLibrary::DrawPolygon(const FJavascriptPDI& PDI, const TArray<FVector>& Verts, const FLinearColor& InColor, ESceneDepthPriorityGroup DepthPriority)
+void UJavascriptEditorLibrary::DrawPolygon(const FJavascriptPDI& PDI, const TArray<FVector>& Verts, const FLinearColor& InColor, ESceneDepthPriorityGroup DepthPriority, EJavascriptRHIFeatureLevel::Type RHIFeatureLevel)
 {
-	FDynamicMeshBuilder MeshBuilder;
+	FDynamicMeshBuilder MeshBuilder((ERHIFeatureLevel::Type)RHIFeatureLevel);
 
 	FColor Color = InColor.ToFColor(false);
 
@@ -693,7 +700,6 @@ FJavascriptUICommandList UJavascriptEditorLibrary::GetLevelEditorActions()
 	return CommandList;
 }
 
-
 void UJavascriptEditorLibrary::AddExtender(FJavascriptExtensibilityManager Manager, FJavascriptExtender Extender)
 {
 	if (Manager.Handle.IsValid() && Extender.Handle.IsValid())
@@ -786,7 +792,7 @@ FString UJavascriptEditorLibrary::ExportNavigation(UWorld* InWorld, FString Name
 	{
 		UWorld::InitializationValues IVS;
 		IVS.EnableTraceCollision(true);
-		IVS.CreateNavigation(false);
+		IVS.CreateNavigation(true);
 
 		InWorld->InitWorld(IVS);
 		InWorld->PersistentLevel->UpdateModelComponents();
@@ -806,7 +812,7 @@ FString UJavascriptEditorLibrary::ExportNavigation(UWorld* InWorld, FString Name
 	if (InWorld->GetNavigationSystem())
 	{
 		InWorld->GetNavigationSystem()->Build();
-		if (const ANavigationData* NavData = InWorld->GetNavigationSystem()->GetMainNavData())
+		if (const ANavigationData* NavData = InWorld->GetNavigationSystem()->GetMainNavData(FNavigationSystem::ECreateIfEmpty::Create))
 		{
 			if (const FNavDataGenerator* Generator = NavData->GetGenerator())
 			{

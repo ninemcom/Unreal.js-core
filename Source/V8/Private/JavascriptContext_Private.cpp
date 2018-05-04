@@ -22,6 +22,7 @@
 #include "Engine/World.h"
 #include "Engine/UserDefinedStruct.h"
 #include "ScopedArguments.h"
+#include "ScriptMacros.h"
 
 #if WITH_EDITOR
 #include "ScopedTransaction.h"
@@ -511,21 +512,17 @@ static UProperty* CreateProperty(UObject* Outer, FName Name, const TArray<FStrin
 		{
 			auto q = NewObject<UMapProperty>(Outer, Name);
 			FString Left, Right;
-			if (Type.Split(TEXT(":"), &Left, &Right))
+			if (Type.Split(TEXT("::"), &Left, &Right))
 			{
 				auto Key = FName(*Name.ToString().Append(TEXT("_Key")));
-				if (auto KeyProperty = CreateProperty(q, Key, Decorators, Left, false, false, false))
+				TArray<FString> Empty;
+				if (auto KeyProperty = CreateProperty(q, Key, Empty, Left, false, false, false))
 				{
 					q->KeyProp = KeyProperty;
-					q->KeyProp->SetPropertyFlags(CPF_HasGetValueTypeHash);
 					auto Value = FName(*Name.ToString().Append(TEXT("_Value")));
 					if (auto ValueProperty = CreateProperty(q, Value, Decorators, Right, bIsArray, bIsSubclass, false))
 					{
 						q->ValueProp = ValueProperty;
-						if (q->ValueProp && q->ValueProp->HasAnyPropertyFlags(CPF_ContainsInstancedReference))
-						{
-							q->ValueProp->SetPropertyFlags(CPF_ContainsInstancedReference);
-						}
 					}
 					else
 						q->MarkPendingKill();
@@ -625,10 +622,9 @@ static UProperty* DuplicateProperty(UObject* Outer, UProperty* Property, FName N
 	return SetupProperty(Clone());
 };
 
-void UJavascriptGeneratedFunction::Thunk(FFrame& Stack, RESULT_DECL)
+void UJavascriptGeneratedFunction::Thunk(UObject* Obj, FFrame& Stack, RESULT_DECL)
 {
 	auto Function = static_cast<UJavascriptGeneratedFunction*>(Stack.CurrentNativeFunction);
-
 	auto ProcessInternal = [&](FFrame& Stack, RESULT_DECL)
 	{
 		if (Function->JavascriptContext.IsValid())
@@ -637,7 +633,7 @@ void UJavascriptGeneratedFunction::Thunk(FFrame& Stack, RESULT_DECL)
 
 			FContextScope context_scope(Context->context());
 
-			bool bCallRet = Context->CallProxyFunction(Function->GetOuter(), this, Function, Stack.Locals);
+			bool bCallRet = Context->CallProxyFunction(Function->GetOuter(), Obj, Function, Stack.Locals);
 			if (!bCallRet)
 			{
 				return;
@@ -707,7 +703,7 @@ void UJavascriptGeneratedFunction::Thunk(FFrame& Stack, RESULT_DECL)
 			Frame = (uint8*)FMemory_Alloca(Function->PropertiesSize);
 			FMemory::Memzero(Frame, Function->PropertiesSize);
 		}
-		FFrame NewStack(this, Function, Frame, &Stack, Function->Children);
+		FFrame NewStack(Obj, Function, Frame, &Stack, Function->Children);
 		FOutParmRec** LastOut = &NewStack.OutParms;
 		UProperty* Property;
 
@@ -1539,7 +1535,7 @@ public:
 
 				FinalizeFunction(Function);
 
-				Function->SetNativeFunc((Native)&UJavascriptGeneratedFunction::Thunk);
+				Function->SetNativeFunc(&UJavascriptGeneratedFunction::Thunk);
 
 				Function->Next = Class->Children;
 				Class->Children = Function;
@@ -4376,7 +4372,11 @@ public:
 			chakra::External((void*)&Owner, nullptr)
 		};
 
-		return chakra::New(v8_struct, args, 3);
+		JsValueRef obj = chakra::New(v8_struct, args, 3);
+		if (chakra::IsEmpty(obj))
+			return chakra::Undefined();
+
+		return obj;
 	}
 
 	JsValueRef ForceExportObject(UObject* Object)
@@ -5159,21 +5159,21 @@ inline void FJavascriptContextImplementation::AddReferencedObjects(UObject * InT
 		}
 		else
 		{
-			Collector.AddReferencedObject(It.Key(), InThis);
+			Collector.AddReferencedObject(Object, InThis);
 		}
 	}
 
 	// All structs
 	for (auto It = MemoryToObjectMap.CreateIterator(); It; ++It)
 	{
-		auto Struct = It.Key()->Struct;
-		if (Struct->IsPendingKill())
+		TSharedPtr<FStructMemoryInstance> StructScript = It.Key();
+		if (!StructScript.IsValid() || StructScript->Struct->IsPendingKill())
 		{
 			It.RemoveCurrent();
 		}
 		else
 		{
-			Collector.AddReferencedObject(Struct, InThis);
+			Collector.AddReferencedObject(StructScript->Struct, InThis);
 		}
 	}
 

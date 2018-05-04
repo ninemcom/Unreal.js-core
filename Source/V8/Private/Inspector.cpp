@@ -24,11 +24,9 @@
 //#endif
 //
 //THIRD_PARTY_INCLUDES_START
-////#include <vector>
-////#include "v8-inspector.h"
-////#include "v8-platform.h"
-////#include "libplatform/libplatform.h"
-////#include "node_platform.h"
+//#include "v8-inspector.h"
+//#include "v8-platform.h"
+//#include "libplatform/libplatform.h"
 //THIRD_PARTY_INCLUDES_END
 //
 //#if WITH_EDITOR 
@@ -42,6 +40,8 @@
 //#include "Helpers.h"
 //#include "Translator.h"
 //#include "IV8.h"
+//
+//using namespace v8;
 //
 //namespace {
 //	class AgentImpl : public v8_inspector::V8Inspector::Channel, public TSharedFromThis<AgentImpl>
@@ -71,7 +71,7 @@
 //		void DispatchMessages()
 //		{
 //			// Dispatch within scope
-//			v8::Isolate::Scope isolate_scope(isolate_);
+//			Isolate::Scope isolate_scope(isolate_);
 //
 //			// Copy messages first from queue
 //			TArray<TArray<uint8>> Messages = MoveTemp(PendingMessages);
@@ -252,8 +252,8 @@
 //class FInspector : public IJavascriptInspector, public FTickableAnyObject, public v8_inspector::V8InspectorClient, public FOutputDevice
 //{
 //public:
-//	v8::Isolate* isolate_;
-//	v8::Persistent<v8::Context> context_;
+//	Isolate* isolate_;
+//	Persistent<Context> context_;
 //	bool terminated_{ false };
 //	bool running_nested_loop_{ false };
 //	std::unique_ptr<v8_inspector::V8Inspector> v8inspector;
@@ -273,7 +273,7 @@
 //		return FString::Printf(TEXT("chrome-devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws=127.0.0.1:%d"), Port);
 //	}
 //
-//	FInspector(v8::Platform* platform, int32 InPort, v8::Local<v8::Context> InContext)
+//	FInspector(v8::Platform* platform, int32 InPort, Local<Context> InContext)
 //		: Port(InPort)
 //	{
 //		platform_ = platform;
@@ -295,10 +295,10 @@
 //		Install(InPort);
 //
 //		{
-//			v8::Isolate::Scope isolate_scope(isolate_);
-//			v8::Context::Scope context_scope(InContext);
+//			Isolate::Scope isolate_scope(isolate_);
+//			Context::Scope context_scope(InContext);
 //
-//			v8::TryCatch try_catch;
+//			TryCatch try_catch(isolate_);
 //
 //			auto source = TEXT("'log error warn info void assert'.split(' ').forEach(x => { let o = console[x].bind(console); let y = $console[x].bind($console); console['$'+x] = o; console[x] = function () { y(...arguments); return o(...arguments); }})");
 //			auto script = v8::Script::Compile(I.String(source));
@@ -340,14 +340,14 @@
 //
 //		if (Category != NAME_Javascript)
 //		{
-//			v8::HandleScope handle_scope(isolate_);
+//			HandleScope handle_scope(isolate_);
 //
 //			FIsolateHelper I(isolate_);
 //
-//			v8::Isolate::Scope isolate_scope(isolate_);
-//			v8::Context::Scope context_scope(context());
+//			Isolate::Scope isolate_scope(isolate_);
+//			Context::Scope context_scope(context());
 //
-//			v8::TryCatch try_catch;
+//			TryCatch try_catch(isolate_);
 //
 //			auto console = context()->Global()->Get(I.Keyword("console")).As<v8::Object>();
 //
@@ -360,14 +360,14 @@
 //
 //			if (Verbosity == ELogVerbosity::Display)
 //			{
-//				v8::Handle<v8::Value> argv[2];
+//				Handle<Value> argv[2];
 //				argv[0] = I.String(FString::Printf(TEXT("%%c%s: %s"), *Category.ToString(), V));
 //				argv[1] = I.String(TEXT("color:gray"));
 //				function->Call(console, 2, argv);
 //			}
 //			else
 //			{
-//				v8::Handle<v8::Value> argv[1];
+//				Handle<Value> argv[1];
 //				argv[0] = I.String(FString::Printf(TEXT("%s: %s"), *Category.ToString(), V));
 //				function->Call(console, 1, argv);
 //			}
@@ -379,7 +379,7 @@
 //		delete this;
 //	}
 //
-//	v8::Local<v8::Context> context() { return v8::Local<v8::Context>::New(isolate_, context_); }
+//	Local<Context> context() { return Local<v8::Context>::New(isolate_, context_); }
 //
 //	void runMessageLoopOnPause(int context_group_id) override
 //	{
@@ -390,7 +390,9 @@
 //		{
 //			lws_service(WebSocketContext, 0);
 //
-//			static_cast<node::NodePlatform*>(platform_)->FlushForegroundTasksInternal();
+//			while (v8::platform::PumpMessageLoop(platform_, isolate_))
+//			{
+//			}
 //		}
 //		terminated_ = false;
 //		running_nested_loop_ = false;
@@ -592,8 +594,8 @@
 //
 IJavascriptInspector* IJavascriptInspector::Create(int32 InPort, JsContextRef InContext)
 {
-	//return new FInspector(reinterpret_cast<v8::Platform*>(IV8::Get().GetV8Platform()), InPort, InContext);
 	return nullptr;
+	//return new FInspector(reinterpret_cast<v8::Platform*>(IV8::Get().GetV8Platform()), InPort, InContext);
 }
 #else
 IJavascriptInspector* IJavascriptInspector::Create(int32 InPort, JsContextRef InContext)

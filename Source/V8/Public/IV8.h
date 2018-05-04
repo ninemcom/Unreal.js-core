@@ -1,6 +1,7 @@
 #pragma once
 
-#include "ModuleManager.h"
+#include "Modules/ModuleInterface.h"
+#include "Modules/ModuleManager.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FJavascriptExecStateChangedDelegate, bool);
 

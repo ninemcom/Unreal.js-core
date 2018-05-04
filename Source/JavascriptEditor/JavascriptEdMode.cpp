@@ -7,8 +7,13 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "EdMode.h"
 #include "Components/Widget.h"
 
-
 #if WITH_EDITOR
+#include "Components/Widget.h"
+#include "EditorModeManager.h"
+#include "EdMode.h"
+#include "Engine/Canvas.h"
+#include "SJavascriptBox.h"
+#include "Toolkits/ToolkitManager.h"
 
 /** Util to find named canvas in transient package, and create if not found */
 static UCanvas* GetCanvasByName(FName CanvasName)

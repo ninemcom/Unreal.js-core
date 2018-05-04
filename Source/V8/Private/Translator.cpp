@@ -20,7 +20,7 @@ namespace chakra
 			buffer[strlen] = '\0';
 
 			FString errStr = UTF8_TO_TCHAR(buffer);
-			checkf(false, *errStr);
+			checkf(false, TEXT("%s"), *errStr);
 			return;
 		}
 

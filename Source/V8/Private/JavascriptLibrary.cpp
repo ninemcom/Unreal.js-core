@@ -13,9 +13,9 @@
 #include "Modules/ModuleVersion.h"
 #include "Misc/FileHelper.h"
 #include "UObject/MetaData.h"
+#include "Engine/Engine.h"
 #include "UObject/Package.h"
 #include "Engine/BlueprintGeneratedClass.h"
-#include "Engine/Engine.h"
 #include "Misc/Base64.h"
 #include "Serialization/ObjectReader.h"
 #include "Serialization/ObjectWriter.h"
@@ -379,9 +379,13 @@ FString UJavascriptLibrary::ReadStringFromFile(UObject* Object, FString Filename
 	return Result;
 }
 
-bool UJavascriptLibrary::WriteStringToFile(UObject* Object, FString Filename, const FString& Data)
+bool UJavascriptLibrary::WriteStringToFile(UObject* Object, FString Filename, const FString& Data, EJavascriptEncodingOptions::Type EncodingOptions)
 {
-	return FFileHelper::SaveStringToFile(*Data, *Filename, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	if (EncodingOptions == EJavascriptEncodingOptions::Type::AutoDetect)
+	{
+		EncodingOptions = EJavascriptEncodingOptions::Type::ForceUTF8WithoutBOM;
+	}
+	return FFileHelper::SaveStringToFile(*Data, *Filename, (FFileHelper::EEncodingOptions)EncodingOptions);
 }
 
 FString UJavascriptLibrary::GetDir(UObject* Object, FString WhichDir)

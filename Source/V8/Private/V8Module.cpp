@@ -70,7 +70,7 @@ public:
 		const UJavascriptSettings& Settings = *GetDefault<UJavascriptSettings>();
 		Settings.Apply();
 
-		//V8::InitializeICU(nullptr);
+		//V8::InitializeICUDefaultLocation(nullptr);
 		JsErrorCode createErr = JsCreateRuntime(JsRuntimeAttributeDisableNativeCodeGeneration, nullptr, &ChakraRuntime);
 		checkf(createErr == JsNoError, TEXT("Failed to create javascript runtime! %d"), (int)createErr);
 
