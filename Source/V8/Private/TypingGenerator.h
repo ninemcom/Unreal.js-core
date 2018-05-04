@@ -558,6 +558,9 @@ struct TypingGenerator : TypingGeneratorBase
 		w.push("\tTable: string;\n");
 		w.push("\tKey: string;\n");
 		w.push("\tNamespace: string;\n");
+		w.push("\tconstructor(source : string);\n");
+		w.push("\tconstructor(table : string, key : string);\n");
+		w.push("\tconstructor(namespace : string, key : string, source : string);\n");
 		w.push("\ttoString(): string;\n");
 		w.push("\tvalueOf(): string;\n");
 		w.push("\tstatic FindText(namespace : string, key : string, source : string = ''): FText;\n");
