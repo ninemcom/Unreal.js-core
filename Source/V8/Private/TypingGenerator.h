@@ -133,15 +133,19 @@ struct TokenWriter
 		}
 		else if (auto p = Cast<UMulticastDelegateProperty>(Property))
 		{
-			push("UnrealEngineMulticastDelegate<");
+			push("(UnrealEngineMulticastDelegate<");
 			push(p->SignatureFunction);
-			push(">");
+			push("> | (");
+			push(p->SignatureFunction);
+			push("))");
 		}
 		else if (auto p = Cast<UDelegateProperty>(Property))
 		{
-			push("UnrealEngineDelegate<");
+			push("(UnrealEngineDelegate<");
 			push(p->SignatureFunction);
-			push(">");
+			push("> | (");
+			push(p->SignatureFunction);
+			push("))");
 		}
 		else if (auto p = Cast<USoftObjectProperty>(Property))
 		{
