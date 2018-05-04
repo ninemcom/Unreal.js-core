@@ -104,8 +104,15 @@ struct TokenWriter
 		}
 		else if (auto p = Cast<UStructProperty>(Property))
 		{
-			generator.Export(p->Struct);
-			push(FV8Config::Safeify(p->Struct->GetName()));
+			if (p->Struct == FJavascriptFunction::StaticStruct())
+			{
+				push("(() => void)");
+			}
+			else
+			{
+				generator.Export(p->Struct);
+				push(FV8Config::Safeify(p->Struct->GetName()));
+			}
 		}
 		else if (auto p = Cast<UArrayProperty>(Property))
 		{
