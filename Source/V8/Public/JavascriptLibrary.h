@@ -457,6 +457,9 @@ public:
 	static FString GetClassPathName(UClass* Class);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
+	static UObject* GetDefaultObject(UClass* InClass);
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
 	static void SetObjectFlags(UObject* Obj, int32 Flags);
 	
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")

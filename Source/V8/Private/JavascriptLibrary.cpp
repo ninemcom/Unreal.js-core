@@ -539,6 +539,11 @@ FString UJavascriptLibrary::GetClassPathName(UClass* Class)
 	return Class->GetPathName();
 }
 
+UObject* UJavascriptLibrary::GetDefaultObject(UClass* InClass)
+{
+	return InClass->GetDefaultObject();
+}
+
 void UJavascriptLibrary::SetObjectFlags(UObject* Obj, int32 Flags)
 {
 	Obj->SetFlags((EObjectFlags)Flags);
