@@ -1338,7 +1338,6 @@ public:
 					auto Object = ObjectInitializer.GetObj();
 
 					FContextScope context_scope(Context->context());
-
 					JsValueRef Holder = Context->ExportObject(Class);
 
 					JsValueRef proxy = chakra::GetProperty(Holder, "proxy");
@@ -4409,56 +4408,46 @@ public:
 		if (Object == nullptr)
 			return chakra::Undefined();
 
-		auto ObjectPtr = ObjectToObjectMap.Find(Object);
-		if (ObjectPtr == nullptr)
+		if (UClass* Class = Cast<UClass>(Object))
 		{
-			if (ObjectUnderConstructionStack.Num() > 0)
-			{
-				auto& Last = ObjectUnderConstructionStack.Last();
-				if (!Last.bCatched)
-				{
-					if (!Object->HasAnyFlags(RF_ClassDefaultObject) && Object->IsA(Last.Class))
-					{
-						Last.bCatched = true;
-						Last.Finalize(this, Object);
-						return Last.Object.Get();
-					}
-				}
-			}
-
-			JsValueRef value = JS_INVALID_REFERENCE;
-
-			if (UClass* Class = Cast<UClass>(Object))
-			{
-				value = ExportClass(Class);
-			}
-			else if (UScriptStruct* Struct = Cast<UScriptStruct>(Object))
-			{
-				value = ExportStruct(Struct);
-			}
-			else
-			{
-				UClass* Class = Object->GetClass();
-				//if (Class->ClassGeneratedBy && Cast<ULevel>(Class->ClassGeneratedBy->GetOuter()))
-				//{
-				//	return Undefined(isolate_);
-				//}
-
-				JsValueRef v8_class = ExportClass(Class);
-				JsValueRef args[] = {
-					chakra::Undefined(),
-					chakra::External(Object, nullptr)
-				};
-
-				value = chakra::New(v8_class, args, 2);
-			}
-
-			return value;
+			return ExportClass(Class);
 		}
-		else
+		else if (UScriptStruct* Struct = Cast<UScriptStruct>(Object))
+		{
+			return ExportStruct(Struct);
+		}
+		else if (auto ObjectPtr = ObjectToObjectMap.Find(Object))
 		{
 			return ObjectPtr->Get();
 		}
+
+		if (ObjectUnderConstructionStack.Num() > 0)
+		{
+			auto& Last = ObjectUnderConstructionStack.Last();
+			if (!Last.bCatched)
+			{
+				if (!Object->HasAnyFlags(RF_ClassDefaultObject) && Object->IsA(Last.Class))
+				{
+					Last.bCatched = true;
+					Last.Finalize(this, Object);
+					return Last.Object.Get();
+				}
+			}
+		}
+
+		UClass* Class = Object->GetClass();
+		//if (Class->ClassGeneratedBy && Cast<ULevel>(Class->ClassGeneratedBy->GetOuter()))
+		//{
+		//	return Undefined(isolate_);
+		//}
+
+		JsValueRef v8_class = ExportClass(Class);
+		JsValueRef args[] = {
+			chakra::Undefined(),
+			chakra::External(Object, nullptr)
+		};
+
+		return chakra::New(v8_class, args, 2);
 	}
 
 	template <typename StructType>
