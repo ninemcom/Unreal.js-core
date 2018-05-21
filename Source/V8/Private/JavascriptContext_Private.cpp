@@ -23,6 +23,8 @@
 #include "Engine/UserDefinedStruct.h"
 #include "ScopedArguments.h"
 #include "ScriptMacros.h"
+#include "Internationalization/StringTableRegistry.h"
+#include "Internationalization/StringTableCore.h"
 
 #if WITH_EDITOR
 #include "ScopedTransaction.h"
@@ -1791,9 +1793,18 @@ public:
 
 			if (chakra::HasProperty(Self, "Table"))
 			{
-				JsValueRef Table = chakra::GetProperty(Self, "Table");
-				JsValueRef Key = chakra::GetProperty(Self, "Key");
-				Text = FText::FromStringTable(*chakra::StringFromChakra(Table), chakra::StringFromChakra(Key));
+				FName Table = *chakra::StringFromChakra(chakra::GetProperty(Self, "Table"));
+				FString Key = chakra::StringFromChakra(chakra::GetProperty(Self, "Key"));
+				FStringTableConstPtr TablePtr = FStringTableRegistry::Get().FindStringTable(Table);
+
+				if (TablePtr.IsValid() && TablePtr->FindEntry(Key).IsValid())
+				{
+					Text = FText::FromStringTable(Table, Key);
+				}
+				else
+				{
+					Text = FText::FromString(Key);
+				}
 			}
 			else if (chakra::HasProperty(Self, "Namespace"))
 			{
