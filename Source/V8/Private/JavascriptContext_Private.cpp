@@ -34,6 +34,7 @@
 #include "Helpers.h"
 #include "JavascriptGeneratedClass_Native.h"
 #include "JavascriptGeneratedClass.h"
+#include "JavascriptWidgetGeneratedClass.h"
 #include "JavascriptGeneratedFunction.h"
 #include "StructMemoryInstance.h"
 
@@ -832,7 +833,7 @@ namespace {
 	UClass* CurrentClassUnderConstruction = nullptr;
 	void CallClassConstructor(UClass* Class, const FObjectInitializer& ObjectInitializer)
 	{
-		if (Cast<UJavascriptGeneratedClass_Native>(Class) || Cast<UJavascriptGeneratedClass>(Class))
+		if (Cast<UJavascriptGeneratedClass_Native>(Class) || Cast<UJavascriptGeneratedClass>(Class) || Cast<UJavascriptWidgetGeneratedClass>(Class))
 		{
 			CurrentClassUnderConstruction = Class;
 		}
@@ -1293,7 +1294,16 @@ public:
 			ParentClass = ParentClass ? ParentClass : UObject::StaticClass();
 
 			UBlueprintGeneratedClass* Class = nullptr;
-			if (Cast<UBlueprintGeneratedClass>(ParentClass))
+			if (UWidgetBlueprintGeneratedClass* WidgetBlueprintClass = Cast<UWidgetBlueprintGeneratedClass>(ParentClass))
+			{
+				auto Klass = NewObject<UJavascriptWidgetGeneratedClass>(Outer, *Name, RF_Public);
+				Klass->JavascriptContext = Context->AsShared();
+				Class = Klass;
+
+				if (WidgetBlueprintClass->HasTemplate())
+					Klass->SetTemplate(WidgetBlueprintClass->GetTemplate());
+			}
+			else if (Cast<UBlueprintGeneratedClass>(ParentClass))
 			{
 				auto Klass = NewObject<UJavascriptGeneratedClass>(Outer, *Name, RF_Public);
 				Klass->JavascriptContext = Context->AsShared();
@@ -1320,7 +1330,14 @@ public:
 
 				FJavascriptContextImplementation* Context = nullptr;
 
-				if (auto Klass = Cast<UJavascriptGeneratedClass_Native>(Class))
+				if (auto Klass = Cast<UJavascriptWidgetGeneratedClass>(Class))
+				{
+					if (Klass->JavascriptContext.IsValid())
+					{
+						Context = static_cast<FJavascriptContextImplementation*>(Klass->JavascriptContext.Pin().Get());
+					}
+				}
+				else if (auto Klass = Cast<UJavascriptGeneratedClass_Native>(Class))
 				{
 					if (Klass->JavascriptContext.IsValid())
 					{
@@ -1622,6 +1639,7 @@ public:
 
 			// Make sure CDO is ready for use
 			Class->GetDefaultObject();
+			Class->UpdateCustomPropertyListForPostConstruction();
 
 #if ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 12
 			// Assemble reference token stream for garbage collection/ RTGC.

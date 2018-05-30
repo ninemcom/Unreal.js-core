@@ -12,6 +12,7 @@
 #include "HAL/PlatformApplicationMisc.h"
 #include "Modules/ModuleVersion.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "UObject/MetaData.h"
 #include "Engine/Engine.h"
 #include "UObject/Package.h"

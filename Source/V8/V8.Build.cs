@@ -49,7 +49,7 @@ public class V8 : ModuleRules
 
         PublicDependencyModuleNames.AddRange(new string[] 
         { 
-            "Core", "CoreUObject", "Engine", "Sockets", "ApplicationCore"
+            "Core", "CoreUObject", "Engine", "Sockets", "ApplicationCore", "UMG"
         });
 
         if (Target.bBuildEditor)
