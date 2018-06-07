@@ -21,6 +21,9 @@
 #include "Serialization/ObjectReader.h"
 #include "Serialization/ObjectWriter.h"
 #include "Serialization/NameAsStringProxyArchive.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
 
 struct FPrivateSocketHandle
 {
@@ -246,6 +249,21 @@ bool UJavascriptLibrary::Decode(UObject* Object, FString InData)
 UObject* UJavascriptLibrary::Duplicate(UObject* Object, UObject* Outer, FName Name)
 {
 	return DuplicateObject<UObject>(Object, Outer, *Name.ToString());
+}
+
+void UJavascriptLibrary::SetTemplate(UClass* InWidgetClass, UUserWidget* InTemplate)
+{
+	CastChecked<UWidgetBlueprintGeneratedClass>(InWidgetClass)->SetTemplate(InTemplate);
+}
+
+UUserWidget* UJavascriptLibrary::NewWidgetObject(UObject* Outer, UClass* UserWidgetClass, FName WidgetName, int32 Flags)
+{
+	return UUserWidget::NewWidgetObject(Outer, UserWidgetClass, WidgetName, (EObjectFlags)Flags);
+}
+
+void UJavascriptLibrary::ClearInternalFlags(UObject* Object, int32 Flags)
+{
+	Object->ClearInternalFlags((EInternalObjectFlags)Flags);
 }
 
 bool UJavascriptLibrary::HasAnyFlags(UObject* Object, int32 Flags)

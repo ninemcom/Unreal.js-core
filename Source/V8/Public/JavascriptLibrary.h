@@ -8,6 +8,7 @@
 #include "JavascriptLibrary.generated.h"
 
 class FInternetAddr;
+class UWidgetTree;
 
 USTRUCT(BlueprintType)
 struct V8_API FDirectoryItem
@@ -307,6 +308,15 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	static UObject* Duplicate(UObject* Object, UObject* Outer, FName Name);
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	static void SetTemplate(UClass* InWidgetClass, UUserWidget* InTemplate);
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	static UUserWidget* NewWidgetObject(UObject* Outer, UClass* UserWidgetClass, FName WidgetName, int32 Flags);
+
+	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
+	static void ClearInternalFlags(UObject* Object, int32 Flags);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	static bool HasAnyFlags(UObject* Object, int32 Flags);
