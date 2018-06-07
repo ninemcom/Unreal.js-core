@@ -102,8 +102,9 @@ void UJavascriptComponent::TickComponent(float DeltaTime, enum ELevelTick TickTy
 			BackgroundWorkThread.Reset(); // also wait for completion
 			BackgroundWork.Reset();
 
-			callback.Execute();
 			IV8::Get().SetExecStatusChange(true);
+
+			callback.Execute();
 		}
 	}
 
