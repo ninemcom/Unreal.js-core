@@ -35,6 +35,7 @@
 #include "JavascriptGeneratedClass_Native.h"
 #include "JavascriptGeneratedClass.h"
 #include "JavascriptWidgetGeneratedClass.h"
+#include "JavascriptWidgetGeneratedClass_Native.h"
 #include "JavascriptGeneratedFunction.h"
 #include "StructMemoryInstance.h"
 
@@ -833,7 +834,7 @@ namespace {
 	UClass* CurrentClassUnderConstruction = nullptr;
 	void CallClassConstructor(UClass* Class, const FObjectInitializer& ObjectInitializer)
 	{
-		if (Cast<UJavascriptGeneratedClass_Native>(Class) || Cast<UJavascriptGeneratedClass>(Class) || Cast<UJavascriptWidgetGeneratedClass>(Class))
+		if (Cast<UJavascriptGeneratedClass_Native>(Class) || Cast<UJavascriptGeneratedClass>(Class) || Cast<UJavascriptWidgetGeneratedClass>(Class) || Cast<UJavascriptWidgetGeneratedClass_Native>(Class))
 		{
 			CurrentClassUnderConstruction = Class;
 		}
@@ -1300,8 +1301,17 @@ public:
 				Klass->JavascriptContext = Context->AsShared();
 				Class = Klass;
 
-				if (WidgetBlueprintClass->HasTemplate())
-					Klass->SetTemplate(WidgetBlueprintClass->GetTemplate());
+				Klass->SetTemplate(WidgetBlueprintClass->GetTemplate());
+			}
+			else if (ParentClass->IsChildOf<UUserWidget>())
+			{
+				// inherited from javascript code
+				auto Klass = NewObject<UJavascriptWidgetGeneratedClass_Native>(Outer, *Name, RF_Public);
+				Klass->JavascriptContext = Context->AsShared();
+				Class = Klass;
+
+				// This flag is necessary for proper initialization
+				Class->ClassFlags |= CLASS_Native;
 			}
 			else if (Cast<UBlueprintGeneratedClass>(ParentClass))
 			{
@@ -1330,7 +1340,14 @@ public:
 
 				FJavascriptContextImplementation* Context = nullptr;
 
-				if (auto Klass = Cast<UJavascriptWidgetGeneratedClass>(Class))
+				if (auto Klass = Cast<UJavascriptWidgetGeneratedClass_Native>(Class))
+				{
+					if (Klass->JavascriptContext.IsValid())
+					{
+						Context = static_cast<FJavascriptContextImplementation*>(Klass->JavascriptContext.Pin().Get());
+					}
+				}
+				else if (auto Klass = Cast<UJavascriptWidgetGeneratedClass>(Class))
 				{
 					if (Klass->JavascriptContext.IsValid())
 					{
@@ -4051,6 +4068,8 @@ public:
 				{
 					const bool bIsJavascriptClass =
 						ClassToExport->GetClass()->IsChildOf(UJavascriptGeneratedClass::StaticClass()) ||
+						ClassToExport->GetClass()->IsChildOf(UJavascriptWidgetGeneratedClass::StaticClass()) ||
+						ClassToExport->GetClass()->IsChildOf(UJavascriptWidgetGeneratedClass_Native::StaticClass()) ||
 						ClassToExport->GetClass()->IsChildOf(UJavascriptGeneratedClass_Native::StaticClass());
 
 					auto PreCreate = [&]() {
