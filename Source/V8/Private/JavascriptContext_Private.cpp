@@ -23,6 +23,7 @@
 #include "Engine/UserDefinedStruct.h"
 #include "ScopedArguments.h"
 #include "ScriptMacros.h"
+#include "Blueprint/UserWidget.h"
 #include "Internationalization/StringTableRegistry.h"
 #include "Internationalization/StringTableCore.h"
 
@@ -1831,6 +1832,10 @@ public:
 				FName Table = *chakra::StringFromChakra(chakra::GetProperty(Self, "Table"));
 				FString Key = chakra::StringFromChakra(chakra::GetProperty(Self, "Key"));
 				FStringTableConstPtr TablePtr = FStringTableRegistry::Get().FindStringTable(Table);
+				if (!TablePtr.IsValid() && LoadObject<UObject>(nullptr, *Table.ToString()))
+				{
+					TablePtr = FStringTableRegistry::Get().FindStringTable(Table);
+				}
 
 				if (TablePtr.IsValid() && TablePtr->FindEntry(Key).IsValid())
 				{
