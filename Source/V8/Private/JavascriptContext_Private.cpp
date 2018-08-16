@@ -1113,6 +1113,12 @@ public:
 
 	~FJavascriptContextImplementation()
 	{
+		{
+			FContextScope context_socpe(context_.Get());
+			JsCheck(JsSetPromiseContinuationCallback(nullptr, nullptr));
+			JsCheck(JsSetContextData(context_.Get(), nullptr));
+		}
+
 		PurgeModules();
 
 		ReleaseAllPersistentHandles();
@@ -4359,6 +4365,8 @@ public:
 
 		// public name
 		FString enumName = FV8Config::Safeify(Enum->GetName());
+		JsValueRef global = GetGlobalTemplate();
+		UE_LOG(Javascript, Verbose, TEXT("Global %p"), global);
 		chakra::SetProperty(GetGlobalTemplate(), enumName, arr);
 
 		return arr;
@@ -5266,14 +5274,17 @@ void FJavascriptFunction::Execute()
 {
 	if (!Handle.IsValid() || chakra::IsEmpty(Handle->Function.Get())) return;
 
+	JsContextRef context = Handle->context.Get();
+	FJavascriptContext* jsContext = FJavascriptContext::FromChakra(context);
+	if (jsContext == nullptr)
+		return;
+
 	{
 		FPrivateJavascriptFunction* Handle = this->Handle.Get();
 
 		JsValueRef function = Handle->Function.Get();
 		if (!chakra::IsEmpty(function))
 		{
-			JsContextRef context = Handle->context.Get();
-
 			FContextScope context_scope(context);
 
 			JsValueRef returnValue = JS_INVALID_REFERENCE;
@@ -5283,7 +5294,7 @@ void FJavascriptFunction::Execute()
 				JsValueRef exception = JS_INVALID_REFERENCE;
 				JsCheck(JsGetAndClearException(&exception));
 
-				FJavascriptContext::FromChakra(context)->UncaughtException(FV8Exception::Report(exception));
+				jsContext->UncaughtException(FV8Exception::Report(exception));
 			}
 			else if (error != JsNoError)
 			{
@@ -5297,20 +5308,34 @@ void FJavascriptFunction::Execute(UScriptStruct* Struct, void* Buffer)
 {
 	if (!Handle.IsValid() || Handle->Function.IsEmpty()) return;
 
+	JsContextRef context = Handle->context.Get();
+	FJavascriptContext* jsContext = FJavascriptContext::FromChakra(context);
+	if (jsContext == nullptr)
+		return;
+
 	{
 		FPrivateJavascriptFunction* Handle = this->Handle.Get();
 
 		JsValueRef function = Handle->Function.Get();
 		if (!chakra::IsEmpty(function))
 		{
-			JsContextRef context = Handle->context.Get();
-
 			FContextScope context_scope(context);
 
 			JsValueRef arg = FJavascriptContextImplementation::GetSelf()->ExportStructInstance(Struct, (uint8*)Buffer, FNoPropertyOwner());
 			JsValueRef args[] = { function, arg };
 			JsValueRef returnValue = JS_INVALID_REFERENCE;
-			JsCheck(JsCallFunction(function, args, 2, &returnValue));
+			JsErrorCode error = JsCallFunction(function, args, 2, &returnValue);
+			if (error == JsErrorScriptException)
+			{
+				JsValueRef exception = JS_INVALID_REFERENCE;
+				JsCheck(JsGetAndClearException(&exception));
+
+				jsContext->UncaughtException(FV8Exception::Report(exception));
+			}
+			else if (error != JsNoError)
+			{
+				UE_LOG(Javascript, Error, TEXT("exception occured: %d"), (int)error);
+			}
 		}
 	}
 }

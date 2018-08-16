@@ -91,6 +91,7 @@ void UJavascriptComponent::TickComponent(float DeltaTime, enum ELevelTick TickTy
 
 	if (BackgroundWork.IsValid())
 	{
+		UE_LOG(Javascript, Verbose, TEXT("BackgroundWork ticking"));
 		if (!BackgroundWorkThread.IsValid())
 		{
 			// start background work
@@ -98,6 +99,7 @@ void UJavascriptComponent::TickComponent(float DeltaTime, enum ELevelTick TickTy
 		}
 		else if (BackgroundWork->IsDone())
 		{
+			UE_LOG(Javascript, Verbose, TEXT("BackgroundWork done"));
 			FJavascriptFunction callback = BackgroundWork->GetCallback();
 			BackgroundWorkThread.Reset(); // also wait for completion
 			BackgroundWork.Reset();
@@ -154,6 +156,8 @@ void UJavascriptComponent::DoInBackground(FJavascriptFunction Work, FJavascriptF
 		UE_LOG(Javascript, Log, TEXT("have already running background work, skipping it"));
 		return;
 	}
+
+	UE_LOG(Javascript, Log, TEXT("DoInBackground start"));
 
 	IV8::Get().SetExecStatusChange(false);
 	BackgroundWork = MakeUnique<FJavascriptBackgroundWork>(Work, Callback);

@@ -1,5 +1,6 @@
 #include "Translator.h"
 #include "Helpers.h"
+#include "V8PCH.h"
 
 namespace chakra
 {
@@ -8,6 +9,8 @@ namespace chakra
 #if DO_CHECK
 		if (error == JsNoError)
 			return;
+
+		UE_LOG(Javascript, Verbose, TEXT("JsError %d"), (int)error);
 
 		if (error == JsErrorScriptException || error == JsErrorScriptCompile)
 		{
@@ -34,6 +37,7 @@ namespace chakra
 		uint8* Memory = RawMemoryFromChakra(Value);
 		if (Memory)
 		{
+			UE_LOG(Javascript, Verbose, TEXT("chakra::UObjectFromChakra 0x%p"), Value);
 			auto uobj = reinterpret_cast<UObject*>(Memory);
 			if (uobj->IsValidLowLevelFast() && !uobj->IsPendingKill())
 			{
@@ -46,6 +50,7 @@ namespace chakra
 
 	uint8* RawMemoryFromChakra(JsValueRef Value)
 	{
+		UE_LOG(Javascript, Verbose, TEXT("chakra::RawMemoryFromChakra 0x%p"), Value);
 		if (chakra::IsEmpty(Value) || !chakra::IsObject(Value))
 			return nullptr;
 
@@ -61,6 +66,7 @@ namespace chakra
 
 	UClass* UClassFromChakra(JsValueRef Value)
 	{
+		UE_LOG(Javascript, Verbose, TEXT("chakra::UClassFromChakra 0x%p"), Value);
 		if (chakra::IsEmpty(Value))
 			return nullptr;
 
@@ -86,6 +92,7 @@ namespace chakra
 
 	FString StringFromChakra(JsValueRef Value)
 	{
+		UE_LOG(Javascript, Verbose, TEXT("chakra::StringFromChakra 0x%p"), Value);
 		const int STACK_BUFFER_SIZE = 0x10000;
 		char Buffer[STACK_BUFFER_SIZE];
 		const TCHAR* StringPtr = nullptr;
@@ -121,6 +128,7 @@ namespace chakra
 
 	FString StringFromArgs(const JsValueRef* args, unsigned short nargs, int StartIndex)
 	{
+		UE_LOG(Javascript, Verbose, TEXT("chakra::StringFromArgs"));
 		TArray<FString> ArgStrings;
 
 		for (unsigned int Index = StartIndex; Index < nargs; Index++)
