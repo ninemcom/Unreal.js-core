@@ -4991,12 +4991,12 @@ void FJavascriptContextImplementation::FromValue<FScriptMap>(FScriptMap* Ptr, UP
 			JsValueRef Value = chakra::GetProperty(v, chakra::StringFromChakra(Key));
 
 			int ElementIndex = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
-			MapHelper.Rehash();
-
 			uint8* PairPtr = MapHelper.GetPairPtr(ElementIndex);
 			InternalWriteProperty(mapProperty->KeyProp, PairPtr + mapProperty->MapLayout.KeyOffset, Key);
 			InternalWriteProperty(mapProperty->ValueProp, PairPtr, Value);
 		}
+		
+		MapHelper.Rehash();
 	}
 }
 
