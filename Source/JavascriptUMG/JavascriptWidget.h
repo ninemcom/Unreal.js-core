@@ -27,6 +27,7 @@ public:
 	void SetRootWidget(UWidget* Widget);	
 
 	virtual void ProcessEvent(UFunction* Function, void* Parms) override;
+	virtual void NativeDestruct() override;
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
 	static void CallSynchronizeProperties(UVisual* WidgetOrSlot);	

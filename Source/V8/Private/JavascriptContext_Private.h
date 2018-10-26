@@ -54,6 +54,7 @@ struct FJavascriptContext : TSharedFromThis<FJavascriptContext>
 
 	virtual void PauseTick() = 0;
 	virtual void ResumeTick() = 0;
+	virtual bool IsPaused() const = 0;
 
 	virtual void UncaughtException(const FString& Exception) = 0;
 

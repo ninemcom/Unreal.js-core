@@ -632,10 +632,9 @@ void UJavascriptGeneratedFunction::Thunk(UObject* Obj, FFrame& Stack, RESULT_DEC
 	auto Function = static_cast<UJavascriptGeneratedFunction*>(Stack.CurrentNativeFunction);
 	auto ProcessInternal = [&](FFrame& Stack, RESULT_DECL)
 	{
-		if (Function->JavascriptContext.IsValid())
+		TSharedPtr<FJavascriptContext> Context = Function->JavascriptContext.Pin();
+		if (Context.IsValid() && !Context->IsPaused())
 		{
-			auto Context = Function->JavascriptContext.Pin();
-
 			FContextScope context_scope(Context->context());
 
 			bool bCallRet = Context->CallProxyFunction(Function->GetOuter(), Obj, Function, Stack.Locals);
@@ -883,6 +882,7 @@ class FJavascriptContextImplementation : public FJavascriptContext
 public:
 	JsContextRef context() override { return context_.Get(); }
 	bool IsValid() const { return Magic == MagicNumber; }
+	bool IsPaused() const { return !RunInGameThread; }
 
 public:
 

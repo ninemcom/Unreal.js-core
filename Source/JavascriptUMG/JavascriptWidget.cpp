@@ -25,6 +25,12 @@ void UJavascriptWidget::ProcessEvent(UFunction* Function, void* Parms)
 	Super::ProcessEvent(Function, Parms);	
 }
 
+void UJavascriptWidget::NativeDestruct()
+{
+	JavascriptContext = nullptr;
+	Super::NativeDestruct();
+}
+
 void UJavascriptWidget::CallSynchronizeProperties(UVisual* Visual)
 {
 	if (auto Widget = Cast<UWidget>(Visual))
