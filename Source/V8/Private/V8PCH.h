@@ -48,7 +48,6 @@ struct IJavascriptDebugger
 {
 	virtual ~IJavascriptDebugger() {}
 
-	virtual bool IsBreak() = 0;
 	virtual void Destroy() = 0;
 
 	static IJavascriptDebugger* Create(int32 InPort, JsContextRef InContext);

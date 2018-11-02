@@ -52,6 +52,11 @@ public class V8 : ModuleRules
             "Core", "CoreUObject", "Engine", "Sockets", "ApplicationCore", "UMG"
         });
 
+        if (Target.Platform == UnrealTargetPlatform.Win64)
+        {
+            PrivateIncludePaths.Add(Path.Combine(ThirdPartyPath, "chakracore-debug", "include"));
+        }
+
         if (Target.bBuildEditor)
         {
             PublicDependencyModuleNames.AddRange(new string[]
@@ -111,23 +116,34 @@ public class V8 : ModuleRules
         if ((Target.Platform == UnrealTargetPlatform.Win64) || (Target.Platform == UnrealTargetPlatform.Win32))
         {
             string LibrariesPath = Path.Combine(ThirdPartyPath, "chakracore", "lib");
+            string DebuggerLibPath = Path.Combine(ThirdPartyPath, "chakracore-debug", "lib");
 
             if (Target.Platform == UnrealTargetPlatform.Win64)
             {
                 LibrariesPath = Path.Combine(LibrariesPath, "Win64");
+                DebuggerLibPath = Path.Combine(DebuggerLibPath, "Win64");
             }
             else
             {
                 LibrariesPath = Path.Combine(LibrariesPath, "Win32");
+                DebuggerLibPath = Path.Combine(DebuggerLibPath, "Win32");
             }
 
             if (Target.Configuration == UnrealTargetConfiguration.Debug || Target.Configuration == UnrealTargetConfiguration.DebugGame)
             {
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "Debug", "ChakraCore.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.Protocol.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.ProtocolHandler.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.Service.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "libboost_date_time-vc141-mt-x64-1_68.lib"));
             }
             else
             {
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "Release", "ChakraCore.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.Protocol.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.ProtocolHandler.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.Service.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "libboost_date_time-vc141-mt-x64-1_68.lib"));
             }
 
             if (node_version[0] >= 6)
