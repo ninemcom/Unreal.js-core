@@ -165,6 +165,15 @@ struct TokenWriter
 			generator.Export(p->PropertyClass);
 			push(FV8Config::Safeify(p->PropertyClass->GetName()));
 		}
+		else if (Cast<UMapProperty>(Property) && Cast<UMapProperty>(Property)->KeyProp->IsA<UStrProperty>())
+		{
+			UProperty* valueProp = Cast<UMapProperty>(Property)->ValueProp;
+			generator.Export(valueProp);
+
+			push("{[key:string]: ");
+			push(valueProp);
+			push("}");
+		}
 		else
 		{
 			push("any");
