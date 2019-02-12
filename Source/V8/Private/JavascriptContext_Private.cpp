@@ -637,7 +637,7 @@ void UJavascriptGeneratedFunction::Thunk(UObject* Obj, FFrame& Stack, RESULT_DEC
 	auto ProcessInternal = [&](FFrame& Stack, RESULT_DECL)
 	{
 		TSharedPtr<FJavascriptContext> Context = Function->JavascriptContext.Pin();
-		if (Context.IsValid() && !Context->IsPaused())
+		if (Context.IsValid() && !(Context->IsPaused() && IsInGameThread()))
 		{
 			FContextScope context_scope(Context->context());
 
@@ -1566,8 +1566,10 @@ public:
 							if (Property->HasAnyPropertyFlags(CPF_ReturnParm))
 							{
 								Function->ReturnValueOffset = Property->GetOffset_ForUFunction();
+								const UClass* OwnerClass = Property->GetOwnerClass();
+								bool bOwnedByNativeClass = OwnerClass && OwnerClass->HasAnyClassFlags(CLASS_Native | CLASS_Intrinsic);
 
-								if (!Property->HasAnyPropertyFlags(CPF_IsPlainOldData | CPF_NoDestructor))
+								if (!Property->HasAnyPropertyFlags(CPF_IsPlainOldData | CPF_NoDestructor) && bOwnedByNativeClass) // check multiple inherit
 								{
 									Property->DestructorLinkNext = Function->DestructorLink;
 									Function->DestructorLink = Property;
@@ -1644,7 +1646,7 @@ public:
 
 					if (!chakra::IsFunction(Function)) continue;
 
-					if (Name != TEXT("prector") && Name != TEXT("ctor") && Name != TEXT("constructor"))
+					if (Name != TEXT("constructor"))
 					{
 						if (!AddFunction(*Name, Function))
 						{
@@ -2029,7 +2031,7 @@ public:
 						return false;
 					}
 
-					TSharedPtr<FJavascriptModule> moduleEntry = MakeShared<FJavascriptModule>(module, full_path);
+					TSharedPtr<FJavascriptModule> moduleEntry = MakeShared<FJavascriptModule>(module, relative_path);
 					JsValueRef require = JS_INVALID_REFERENCE; // the actual 'require' used in script
 					JsCheck(JsCreateFunction([](JsValueRef callee, bool isConstructCall, JsValueRef *arguments, unsigned short argumentCount, void *callbackState) -> JsValueRef {
 						if (argumentCount < 1)
@@ -2049,7 +2051,7 @@ public:
 						{
 							if (it.Value().Get() == currentModule)
 							{
-								currentModulePath = &it.Key();
+								currentModulePath = &it.Value()->Path;
 								break;
 							}
 						}
@@ -2059,7 +2061,8 @@ public:
 						JsValueRef args[] = { global, modulePath, chakra::String(currentModulePath ? *currentModulePath : "") };
 						{
 							Self->RequireDepth++;
-							JsCheck(JsCallFunction(Self->RequireInternalFunc, args, ARRAY_COUNT(args), &ret));
+							JsErrorCode err = JsCallFunction(Self->RequireInternalFunc, args, ARRAY_COUNT(args), &ret);
+							check(err == JsNoError || err == JsErrorScriptException);
 							Self->RequireDepth--;
 						}
 
@@ -2897,7 +2900,7 @@ public:
 	{
 		SCOPE_CYCLE_COUNTER(STAT_JavascriptProxy);
 
-		if (!RunInGameThread) return false;
+		if (!RunInGameThread && IsInGameThread()) return false;
 
 		FContextScope context_scope(context());
 
