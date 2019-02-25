@@ -23,14 +23,14 @@ public:
 	void OnClick(UObject* Object);
 
 	/** Refreshes the list */
-	UFUNCTION(BlueprintCallable, Category = "Behavior")
+	UFUNCTION(BlueprintCallable, Category = "Javascript")
 	void RequestListRefresh();
 
-	UFUNCTION(BlueprintCallable, Category = "Behavior")
-	void GetSelectedItems(TArray<UObject*>& OutItems);
+	//UFUNCTION(BlueprintCallable, Category = "Javascript")
+	void GetSelectedItems(TArray<UObject*>& OutItems) override;
 
-	UFUNCTION(BlueprintCallable, Category = "Behavior")
-	void SetSelection(UObject* SoleSelectedItem);
+	//UFUNCTION(BlueprintCallable, Category = "Javascript")
+	void SetSelection(UObject* SoleSelectedItem) override;
 
 	// UWidget interface
 	virtual TSharedRef<SWidget> RebuildWidget() override;

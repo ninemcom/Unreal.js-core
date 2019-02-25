@@ -4,9 +4,11 @@
 #include "SBox.h"
 #include "SSpacer.h"
 
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
+namespace
+{
+	SBox* Target;
+}
 
-static SBox* Target;
 void UJavascriptMultiBox::Setup(TSharedRef<SBox> Box)
 {	
 	Box->SetContent(SNew(SSpacer));
@@ -66,5 +68,3 @@ void UJavascriptMultiBox::AddSubMenu(FJavascriptMenuBuilder& Builder, FName Id, 
 		);
 	}
 }
-
-PRAGMA_ENABLE_SHADOW_VARIABLE_WARNINGS

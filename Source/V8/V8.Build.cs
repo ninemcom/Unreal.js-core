@@ -49,7 +49,7 @@ public class V8 : ModuleRules
 
         PublicDependencyModuleNames.AddRange(new string[] 
         { 
-            "Core", "CoreUObject", "Engine", "Sockets", "ApplicationCore", "UMG"
+            "Core", "CoreUObject", "Engine", "Sockets", "ApplicationCore", "UMG", "NavigationSystem"
         });
 
         if (Target.Platform == UnrealTargetPlatform.Win64)
@@ -80,6 +80,9 @@ public class V8 : ModuleRules
                 "UnrealEd"
             });
         }
+
+        // prevent C4668, -Wundef
+        bEnableUndefinedIdentifierWarnings = false;
 
         LoadV8(Target);
     }
@@ -135,7 +138,7 @@ public class V8 : ModuleRules
                 PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.Protocol.lib"));
                 PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.ProtocolHandler.lib"));
                 PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.Service.lib"));
-                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "libboost_date_time-vc141-mt-x64-1_68.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "libboost_date_time-vc141-mt-x64-1_69.lib"));
             }
             else
             {
@@ -143,7 +146,7 @@ public class V8 : ModuleRules
                 PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.Protocol.lib"));
                 PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.ProtocolHandler.lib"));
                 PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "ChakraCore.Debugger.Service.lib"));
-                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "libboost_date_time-vc141-mt-x64-1_68.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(DebuggerLibPath, "Release", "libboost_date_time-vc141-mt-x64-1_69.lib"));
             }
 
             if (node_version[0] >= 6)
@@ -165,7 +168,9 @@ public class V8 : ModuleRules
         {
             string LibrariesPath = Path.Combine(ThirdPartyPath, "chakracore", "lib", "Android");
 
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "ARMv7", "libChakraCoreStatic.a"));
+            PublicLibraryPaths.Add(Path.Combine(LibrariesPath, "ARMv7"));
+            PublicLibraryPaths.Add(Path.Combine(LibrariesPath, "ARM64"));
+            PublicAdditionalLibraries.Add("ChakraCoreStatic");
             PublicDefinitions.Add(string.Format("WITH_CHAKRA_CORE=1"));
 
             return true;

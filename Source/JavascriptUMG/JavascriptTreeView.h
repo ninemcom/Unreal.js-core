@@ -1,7 +1,7 @@
 #pragma once
 
 #include "STreeView.h"
-#include "TableViewBase.h"
+#include "Widget.h"
 #include "JavascriptTreeView.generated.h"
 
 class UJavascriptContext;
@@ -25,7 +25,7 @@ struct FJavascriptColumn
 * Allows thousands of items to be displayed in a list.  Generates widgets dynamically for each item.
 */
 UCLASS(Experimental)
-class JAVASCRIPTUMG_API UJavascriptTreeView : public UTableViewBase
+class JAVASCRIPTUMG_API UJavascriptTreeView : public UWidget
 {
 	GENERATED_UCLASS_BODY()
 
@@ -95,10 +95,10 @@ public:
 	void OnSelectionChanged(UObject* Object, ESelectInfo::Type Type);
 
 	UFUNCTION(BlueprintCallable, Category = "Javascript")
-	void GetSelectedItems(TArray<UObject*>& OutItems);
+	virtual void GetSelectedItems(TArray<UObject*>& OutItems);
 
 	UFUNCTION(BlueprintCallable, Category = "Javascript")
-	void SetSelection(UObject* SoleSelectedItem);
+	virtual void SetSelection(UObject* SoleSelectedItem);
 
 	UFUNCTION(BlueprintCallable, Category = "Javascript")
 	void SetItemExpansion(UObject* InItem, bool InShouldExpandItem);

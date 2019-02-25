@@ -8,9 +8,7 @@
 #include "GameFramework/GameMode.h"
 #include "Sockets.h"
 #include "EngineUtils.h"
-#include "AI/Navigation//NavigationSystem.h"
 #include "HAL/PlatformApplicationMisc.h"
-#include "Modules/ModuleVersion.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "UObject/MetaData.h"
@@ -24,6 +22,9 @@
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/WidgetBlueprintGeneratedClass.h"
+#include "NavigationSystem.h"
+#include "AI/NavigationSystemBase.h"
+#include "../../Launch/Resources/Version.h"
 
 struct FPrivateSocketHandle
 {
@@ -138,7 +139,7 @@ FString UJavascriptLibrary::Encode(UObject* Object)
 		FWriterProxy(FArchive& InInternalArchive)
 			: FNameAsStringProxyArchive(InInternalArchive)
 		{
-			ArIsLoading = false;
+			SetIsLoading(false);
 		}
 
 		virtual FArchive& operator<<(struct FWeakObjectPtr& Value) override { return *this; }
@@ -202,13 +203,17 @@ bool UJavascriptLibrary::Decode(UObject* Object, FString InData)
 		FReaderProxy(FArchive& InInternalArchive)
 			: FNameAsStringProxyArchive(InInternalArchive)
 		{
-			ArIsLoading = true;
+			SetIsLoading(true);
 		}
 
 		virtual FArchive& operator<<(struct FWeakObjectPtr& Value) override { return *this; }
 		virtual FArchive& operator<<(UObject*& Value) override
 		{
 			FString classPath;
+			
+			if (Value && !Value->IsValidLowLevelFast())
+				Value = nullptr;
+			
 			if (Value) classPath = Value->GetClass()->GetPathName();
 
 			// read/write class information
@@ -238,7 +243,7 @@ bool UJavascriptLibrary::Decode(UObject* Object, FString InData)
 
 	FObjectReaderProxy InternalReader(buffer);
 	FReaderProxy Ar(InternalReader);
-	Ar.ArIsLoading = true;
+	Ar.SetIsLoading(true);
 
 	// deserialize
 	Object->Serialize(Ar);
@@ -256,9 +261,9 @@ void UJavascriptLibrary::SetTemplate(UClass* InWidgetClass, UUserWidget* InTempl
 	CastChecked<UWidgetBlueprintGeneratedClass>(InWidgetClass)->SetTemplate(InTemplate);
 }
 
-UUserWidget* UJavascriptLibrary::NewWidgetObject(UObject* Outer, UClass* UserWidgetClass, FName WidgetName, int32 Flags)
+UUserWidget* UJavascriptLibrary::NewWidgetObject(UObject* Outer, UClass* UserWidgetClass, FName WidgetName)
 {
-	return UUserWidget::NewWidgetObject(Outer, UserWidgetClass, WidgetName, (EObjectFlags)Flags);
+	return UUserWidget::CreateWidgetInstance(*Outer->GetWorld(), UserWidgetClass, WidgetName);
 }
 
 void UJavascriptLibrary::ClearInternalFlags(UObject* Object, int32 Flags)
@@ -599,6 +604,10 @@ UEnum* UJavascriptLibrary::CreateEnum(UObject* Outer, FName Name, TArray<FName> 
 
 	if (NULL != Enum)
 	{
+#if !defined(ENGINE_MINOR_VERSION)
+#error asdflkjgkejgk
+#endif
+
 #if ENGINE_MINOR_VERSION > 14
 		TArray<TPair<FName, int64>> Names;
 #else
@@ -700,7 +709,7 @@ void UJavascriptLibrary::Log(const FJavascriptLogCategory& Category, ELogVerbosi
 
 	if (!Category.Handle->IsSuppressed(Verbosity))
 	{
-		FMsg::Logf_Internal(TCHAR_TO_ANSI(*FileName), LineNumber, Category.Handle->GetCategoryName(), Verbosity, *Message);
+		FMsg::Logf_Internal(TCHAR_TO_ANSI(*FileName), LineNumber, Category.Handle->GetCategoryName(), Verbosity, TEXT("%s"), *Message);
 		if (Verbosity == ELogVerbosity::Fatal) 
 		{
 			_DebugBreakAndPromptForRemote();
@@ -785,7 +794,7 @@ UObject* UJavascriptLibrary::TryLoadByPath(FString Path)
 
 void UJavascriptLibrary::GenerateNavigation(UWorld* world, ARecastNavMesh* NavData )
 {
-	UNavigationSystem::InitializeForWorld(world, FNavigationSystemRunMode::PIEMode);
+	UNavigationSystemV1::CreateNavigationSystem(world)->InitializeForWorld(*world, FNavigationSystemRunMode::PIEMode);
 	NavData->RebuildAll();
 }
 
@@ -871,7 +880,8 @@ FJavascriptStat UJavascriptLibrary::NewStat(
 	bool bDefaultEnable,
 	bool bShouldClearEveryFrame,
 	EJavascriptStatDataType InStatType,
-	bool bCycleStat)
+	bool bCycleStat,
+	int InMemoryRegion)
 {
 	FJavascriptStat Out;
 #if STATS
@@ -886,7 +896,8 @@ FJavascriptStat UJavascriptLibrary::NewStat(
 		bShouldClearEveryFrame, 
 		(EStatDataType::Type)InStatType, 
 		bCycleStat, 
-		FPlatformMemory::EMemoryCounterRegion::MCR_Invalid);
+		FPlatformMemory::EMemoryCounterRegion::MCR_Invalid,
+		(FPlatformMemory::EMemoryCounterRegion)InMemoryRegion);
 #endif
 
 	return Out;

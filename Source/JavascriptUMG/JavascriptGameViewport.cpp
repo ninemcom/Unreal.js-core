@@ -1,7 +1,6 @@
 
 #include "JavascriptGameViewport.h"
 #include "SceneViewport.h"
-#include "Modules/ModuleVersion.h"
 #include "SlateApplication.h"
 
 #include "EngineUtils.h"

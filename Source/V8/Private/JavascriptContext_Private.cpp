@@ -4499,6 +4499,13 @@ public:
 		JsValueRef arr = JS_INVALID_REFERENCE;
 		JsCheck(JsCreateArray(MaxEnumValue, &arr));
 
+		// public name
+		FString enumName = FV8Config::Safeify(Enum->GetName());
+		JsValueRef global = GetGlobalTemplate();
+
+		UE_LOG(Javascript, Verbose, TEXT("Global %p"), global);
+		chakra::SetProperty(GetGlobalTemplate(), enumName, arr);
+
 		for (decltype(MaxEnumValue) Index = 0; Index < MaxEnumValue; ++Index)
 		{
 			FString name = Enum->GetNameStringByIndex(Index);
@@ -4506,12 +4513,6 @@ public:
 			chakra::SetIndex(arr, Index, chakra::String(name));
 			chakra::SetProperty(arr, name, value);
 		}
-
-		// public name
-		FString enumName = FV8Config::Safeify(Enum->GetName());
-		JsValueRef global = GetGlobalTemplate();
-		UE_LOG(Javascript, Verbose, TEXT("Global %p"), global);
-		chakra::SetProperty(GetGlobalTemplate(), enumName, arr);
 
 		return arr;
 	}
@@ -5145,7 +5146,7 @@ void FJavascriptContextImplementation::FromValue<FScriptMap>(FScriptMap* Ptr, UP
 			InternalWriteProperty(mapProperty->KeyProp, PairPtr + mapProperty->MapLayout.KeyOffset, Key);
 			InternalWriteProperty(mapProperty->ValueProp, PairPtr, Value);
 		}
-		
+
 		MapHelper.Rehash();
 	}
 }

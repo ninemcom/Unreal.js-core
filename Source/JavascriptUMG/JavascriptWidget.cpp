@@ -196,3 +196,19 @@ void UJavascriptWidget::ReleaseSlateResources(bool bReleaseChildren)
 		OnDestroy.Broadcast(bReleaseChildren);
 	}
 }
+
+bool UJavascriptWidget::Initialize()
+{
+	bool ret = Super::Initialize();
+	if (ret == false)
+	{
+		return false;
+	}
+
+	return InitializeWidget();
+}
+
+bool UJavascriptWidget::InitializeWidget_Implementation()
+{
+	return true;
+}

@@ -1,10 +1,11 @@
 #pragma once
 
+#include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "JavascriptProfile.h"
 #include "JavascriptContext.h"
 #include "Engine/StreamableManager.h"
-#include "AI/Navigation/RecastNavMesh.h"
+#include "NavMesh/RecastNavMesh.h"
 #include "JavascriptLibrary.generated.h"
 
 class FInternetAddr;
@@ -313,7 +314,7 @@ public:
 	static void SetTemplate(UClass* InWidgetClass, UUserWidget* InTemplate);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
-	static UUserWidget* NewWidgetObject(UObject* Outer, UClass* UserWidgetClass, FName WidgetName, int32 Flags);
+	static UUserWidget* NewWidgetObject(UObject* Outer, UClass* UserWidgetClass, FName WidgetName);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting|Javascript")
 	static void ClearInternalFlags(UObject* Object, int32 Flags);
@@ -554,7 +555,8 @@ public:
 		bool bDefaultEnable,
 		bool bShouldClearEveryFrame,
 		EJavascriptStatDataType InStatType,
-		bool bCycleStat);
+		bool bCycleStat,
+		int InMemoryRegion);
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
 	static void AddMessage(FJavascriptStat Stat, EJavascriptStatOperation InStatOperation);

@@ -2,7 +2,7 @@
 
 PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
-#if !PLATFORM_LINUX
+#if PLATFORM_WINDOWS
 #include "ChakraDebugService.h"
 #include "JavascriptIsolate.h"
 #include "JavascriptContext.h"
@@ -21,7 +21,7 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "ChakraDebug.h"
 #endif
 
-#if WITH_EDITOR && !PLATFORM_LINUX
+#if WITH_EDITOR && PLATFORM_WINDOWS
 #include "TickableEditorObject.h"
 
 namespace 
@@ -132,16 +132,6 @@ public:
 		JsErrorCode result = JsDebugProtocolHandlerWaitForDebugger(ProtocolHandler);
 
 		return result;
-	}
-
-	JsErrorCode ProcessCommandQueue()
-	{
-		return JsDebugProtocolHandlerProcessCommandQueue(ProtocolHandler);
-	}
-
-	JsErrorCode SetCommandQueueCallback(JsDebugProtocolHandlerCommandQueueCallback callback, void* callbackState)
-	{
-		return JsDebugProtocolHandlerSetCommandQueueCallback(ProtocolHandler, callback, callbackState);
 	}
 };
 

@@ -141,7 +141,7 @@ public:
 
 	virtual void FillAutoCompletion(TSharedPtr<FString> TargetContext, TArray<FString>& OutArray, const TCHAR* Input) override
 	{
-		static auto SourceCode = LR"doc(
+		static const TCHAR SourceCode[] = TEXT(R"doc(
 (function () {
     var pattern = '%s'; var head = '';
     pattern.replace(/\\W*([\\w\\.]+)$/, function (a, b, c) { head = pattern.substr(0, c + a.length - b.length); pattern = b });
@@ -162,7 +162,7 @@ public:
     }
     return result.join(',');
 })()
-)doc";
+)doc");
 
 		for (TObjectIterator<UJavascriptContext> It; It; ++It)
 		{

@@ -6,31 +6,33 @@ UJavascriptTileView::UJavascriptTileView(const FObjectInitializer& ObjectInitial
 {	
 }
 
-TSharedRef<SWidget> UJavascriptTileView::RebuildWidget()
-{
-	MyTileView = SNew(STileView< UObject* >)
-		.SelectionMode(SelectionMode)
-		.ListItemsSource(&Items)
-		.ItemHeight(ItemHeight)
-		.OnGenerateTile(BIND_UOBJECT_DELEGATE(STileView< UObject* >::FOnGenerateRow, HandleOnGenerateTile))
-		.OnSelectionChanged_Lambda([this](UObject* Object, ESelectInfo::Type SelectInfo){
-			OnSelectionChanged(Object, SelectInfo);
-		})
-		.OnMouseButtonDoubleClick_Lambda([this](UObject* Object){
-			OnDoubleClick(Object);
-		})
-		//.OnContextMenuOpening(this, &SSocketManager::OnContextMenuOpening)
-		//.OnItemScrolledIntoView(this, &SSocketManager::OnItemScrolledIntoView)
-		//	.HeaderRow
-		//	(
-		//		SNew(SHeaderRow)
-		//		.Visibility(EVisibility::Collapsed)
-		//		+ SHeaderRow::Column(TEXT("Socket"))
-		//	);
-		;
-
-	return MyTileView.ToSharedRef();
-}
+//TSharedRef<STableViewBase> UJavascriptTileView::RebuildListWidget()
+//{
+//	Super::RebuildListWidget();
+//
+//	MyTileView = SNew(STileView< UObject* >)
+//		.SelectionMode(SelectionMode)
+//		.ListItemsSource(&Items)
+//		.ItemHeight(ItemHeight)
+//		.OnGenerateTile(BIND_UOBJECT_DELEGATE(STileView< UObject* >::FOnGenerateRow, HandleOnGenerateTile))
+//		.OnSelectionChanged_Lambda([this](UObject* Object, ESelectInfo::Type SelectInfo){
+//			OnSelectionChanged(Object, SelectInfo);
+//		})
+//		.OnMouseButtonDoubleClick_Lambda([this](UObject* Object){
+//			OnDoubleClick(Object);
+//		})
+//		//.OnContextMenuOpening(this, &SSocketManager::OnContextMenuOpening)
+//		//.OnItemScrolledIntoView(this, &SSocketManager::OnItemScrolledIntoView)
+//		//	.HeaderRow
+//		//	(
+//		//		SNew(SHeaderRow)
+//		//		.Visibility(EVisibility::Collapsed)
+//		//		+ SHeaderRow::Column(TEXT("Socket"))
+//		//	);
+//		;
+//
+//	return MyTileView.ToSharedRef();
+//}
 
 void UJavascriptTileView::ProcessEvent(UFunction* Function, void* Parms)
 {

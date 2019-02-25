@@ -35,6 +35,7 @@
 #include "../../Launch/Resources/Version.h"
 #include "PlatformFileManager.h"
 #include "FileManager.h"
+#include "NavigationSystem.h"
 #include "NavDataGenerator.h"
 #include "SlateApplication.h"
 #include "Engine/LevelStreaming.h"
@@ -801,7 +802,7 @@ FString UJavascriptEditorLibrary::ExportNavigation(UWorld* InWorld, FString Name
 		//InWorld->LoadSecondaryLevels(true, NULL);
 	}
 
-	UNavigationSystem::InitializeForWorld(InWorld, FNavigationSystemRunMode::EditorMode);
+	UNavigationSystemV1::CreateNavigationSystem(InWorld)->InitializeForWorld(*InWorld, FNavigationSystemRunMode::EditorMode);
 	FWorldContext &WorldContext = GEditor->GetEditorWorldContext(true);
 	WorldContext.SetCurrentWorld(InWorld);
 	GWorld = InWorld;
@@ -809,32 +810,25 @@ FString UJavascriptEditorLibrary::ExportNavigation(UWorld* InWorld, FString Name
 //	UGameplayStatics::LoadStreamLevel(InWorld, FName(TEXT("BackgroundMountains")), true, true, FLatentActionInfo());
 // 	UWorld::InitializationValues().ShouldSimulatePhysics(false).EnableTraceCollision(true).CreateNavigation(InWorldType == EWorldType::Editor).CreateAISystem(InWorldType == EWorldType::Editor);
 // 	UNavigationSystem::InitializeForWorld(InWorld, FNavigationSystemRunMode::GameMode);
-	if (InWorld->GetNavigationSystem())
+	FNavigationSystem::Build(*InWorld);
+	if (const ANavigationData* NavData = Cast<ANavigationData>(InWorld->GetNavigationSystem()->GetMainNavData(FNavigationSystem::ECreateIfEmpty::Create)))
 	{
-		InWorld->GetNavigationSystem()->Build();
-		if (const ANavigationData* NavData = InWorld->GetNavigationSystem()->GetMainNavData(FNavigationSystem::ECreateIfEmpty::Create))
+		if (const FNavDataGenerator* Generator = NavData->GetGenerator())
 		{
-			if (const FNavDataGenerator* Generator = NavData->GetGenerator())
-			{
-				//const FString Name = NavData->GetName();
-				//auto fname = FString::Printf(TEXT("%s/%s"), *FPaths::GameSavedDir(), *Name);
-				Generator->ExportNavigationData(Name);
-				InWorld->RemoveFromRoot();
-				return Name;
-			}
-			else
-			{
-				UE_LOG(LogNavigation, Error, TEXT("Failed to export navigation data due to missing generator"));
-			}
+			//const FString Name = NavData->GetName();
+			//auto fname = FString::Printf(TEXT("%s/%s"), *FPaths::GameSavedDir(), *Name);
+			Generator->ExportNavigationData(Name);
+			InWorld->RemoveFromRoot();
+			return Name;
 		}
 		else
 		{
-			UE_LOG(LogNavigation, Error, TEXT("Failed to export navigation data due to navigation data"));
+			UE_LOG(LogNavigation, Error, TEXT("Failed to export navigation data due to missing generator"));
 		}
 	}
 	else
 	{
-		UE_LOG(LogNavigation, Error, TEXT("Failed to export navigation data due to missing navigation system"));
+		UE_LOG(LogNavigation, Error, TEXT("Failed to export navigation data due to navigation data"));
 	}
 
 	InWorld->RemoveFromRoot();
@@ -854,11 +848,11 @@ void UJavascriptEditorLibrary::RemoveLevelInstance(UWorld* World)
 {
 	// Clean up existing world and remove it from root set so it can be garbage collected.
 	World->bIsLevelStreamingFrozen = false;
-	World->bShouldForceUnloadStreamingLevels = true;
-	World->bShouldForceVisibleStreamingLevels = false;
-	for (ULevelStreaming* StreamingLevel : World->StreamingLevels)
+	World->SetShouldForceUnloadStreamingLevels(true);
+	World->SetShouldForceVisibleStreamingLevels(false);
+	for (ULevelStreaming* StreamingLevel : World->GetStreamingLevels())
 	{
-		StreamingLevel->bIsRequestingUnloadAndRemoval = true;
+		StreamingLevel->SetIsRequestingUnloadAndRemoval(true);
 	}
 	World->RefreshStreamingLevels();
 }

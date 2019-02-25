@@ -31,8 +31,8 @@ class FJavascriptBackgroundWork : public FRunnable
 
 public:
 	FJavascriptBackgroundWork(const FJavascriptFunction& InWork, const FJavascriptFunction& InCallback)
-		: Work(InWork)
-		, Callback(InCallback)
+		: Callback(InCallback)
+		, Work(InWork)
 		, Done(false)
 	{}
 

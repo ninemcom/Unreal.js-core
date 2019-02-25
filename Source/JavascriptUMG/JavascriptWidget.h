@@ -28,6 +28,10 @@ public:
 
 	virtual void ProcessEvent(UFunction* Function, void* Parms) override;
 	virtual void NativeDestruct() override;
+	virtual bool Initialize() override;
+
+	UFUNCTION(BlueprintNativeEvent, Category = "Scripting | Javascript")
+	bool InitializeWidget();
 
 	UFUNCTION(BlueprintCallable, Category = "Scripting | Javascript")
 	static void CallSynchronizeProperties(UVisual* WidgetOrSlot);	

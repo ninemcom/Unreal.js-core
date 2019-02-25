@@ -33,7 +33,8 @@ public class JavascriptEditor : ModuleRules
 					"Slate",                    
                     "Landscape",
                     "JavascriptUMG",
-                    "RawMesh"
+                    "RawMesh",
+                    "NavigationSystem"
 				}
             );	// @todo Mac: for some reason CoreUObject and Engine are needed to link in debug on Mac
 

@@ -27,13 +27,18 @@ public:
 
 	/** Event fired when a tutorial stage ends */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Javascript")
-	void OnSelectionChanged(UObject* Object,ESelectInfo::Type Type);	
+	void OnSelectionChanged(UObject* Object);	
 
 	// UWidget interface
-	virtual TSharedRef<SWidget> RebuildWidget() override;
+	//virtual TSharedRef<STableViewBase> RebuildListWidget() override;
 	// End of UWidget interface
 
 	// UObject interface
 	virtual void ProcessEvent(UFunction* Function, void* Parms) override;
 	// End of UObject interface
+
+protected:
+	virtual void OnItemClickedInternal(UObject* Item) { OnClick(Item); }
+	virtual void OnItemDoubleClickedInternal(UObject* Item) { OnDoubleClick(Item); }
+	virtual void OnSelectionChangedInternal(UObject* FirstSelectedItem) { OnSelectionChanged(FirstSelectedItem); }
 };

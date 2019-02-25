@@ -36,7 +36,8 @@ public class JavascriptWebSocket : ModuleRules
             "V8",
             "Sockets",
             "OnlineSubSystemUtils",
-            "Networking"
+            "Networking",
+            "zlib"
         });
 
         if (IsUpdated() && (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Mac))

@@ -7,7 +7,6 @@
 #include "EngineUtils.h"
 #include "OverlaySlot.h"
 #include "AssetViewerSettings.h"
-#include "Modules/ModuleVersion.h"
 
 #define LOCTEXT_NAMESPACE "JavascriptEditor"
 
