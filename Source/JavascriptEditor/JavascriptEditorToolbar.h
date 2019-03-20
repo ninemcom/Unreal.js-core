@@ -4,6 +4,8 @@
 #include "JavascriptEditorLibrary.h"
 #include "JavascriptEditorToolbar.generated.h"
 
+class SBox;
+
 
 /**
  * 

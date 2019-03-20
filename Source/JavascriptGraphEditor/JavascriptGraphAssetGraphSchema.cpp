@@ -1,6 +1,7 @@
 #include "JavascriptGraphAssetGraphSchema.h"
 #include "JavascriptGraphEdNode.h"
 #include "JavascriptGraphConnectionDrawingPolicy.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 
 FJavascriptGraphAction_NewNode::FJavascriptGraphAction_NewNode(const FEdGraphSchemaAction& Template, const UJavascriptGraphAssetGraphSchema* InSchema)
 	: FEdGraphSchemaAction(Template.GetCategory(), Template.GetMenuDescription(), Template.GetTooltipDescription(), Template.GetGrouping(), Template.GetKeywords(), Template.GetSectionID()), Schema(InSchema)

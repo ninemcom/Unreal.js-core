@@ -3,6 +3,7 @@
 #include "SJavascriptBox.h"
 #include "SBox.h"
 #include "SSpacer.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 
 namespace
 {

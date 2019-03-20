@@ -1,6 +1,7 @@
 #include "SJavascriptGraphEdNodePin.h"
 #include "SLevelOfDetailBranchNode.h"
 #include "JavascriptGraphAssetGraphSchema.h"
+#include "Widgets/Layout/SBox.h"
 #include "SWrapBox.h"
 #include "SImage.h"
 #include "SButton.h"

@@ -1,7 +1,9 @@
+#include "JavascriptEditorTab.h"
 PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
-#include "JavascriptEditorTab.h"
 #if WITH_EDITOR
+#include "Editor.h"
+#include "EditorStyleSet.h"
 #include "Button.h"
 #include "SSpacer.h"
 #include "WorkspaceMenuStructure.h"

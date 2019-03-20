@@ -1,6 +1,11 @@
 #include "JavascriptEditorTick.h"
 #include "IV8.h"
 #include "ScopedTransaction.h"
+#include "Engine/Engine.h"
+
+#if WITH_EDITOR
+#include "Editor/EditorEngine.h"
+#endif
 
 #if WITH_EDITOR
 class FJavascriptEditorTick : public FTickableEditorObject

@@ -1,7 +1,8 @@
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
-
 #include "JavascriptPropertyCustomization.h"
 #include "PropertyEditorModule.h"
+#include "Modules/ModuleManager.h"
+
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #if WITH_EDITOR
 static int32 NextId = 0;

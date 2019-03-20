@@ -2,11 +2,11 @@
 
 #include "CoreMinimal.h"
 #include "UserWidget.h"
-#include "Components/PanelSlot.h"
 #include "JavascriptWidget.generated.h"
 
 class UJavascriptWidget;
 class UJavascriptContext;
+class UPanelSlot;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInputActionEvent, FName, ActionName);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInputAxisEvent, float, Axis, FName, AxisName);
@@ -82,18 +82,7 @@ protected:
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 	//~ End UVisual Interface
 
-	virtual UClass* GetSlotClass() const
-	{
-		return UPanelSlot::StaticClass();
-	}
-
-	virtual void OnSlotAdded(UPanelSlot* InSlot)
-	{
-
-	}
-
-	virtual void OnSlotRemoved(UPanelSlot* InSlot)
-	{
-
-	}
+	virtual UClass* GetSlotClass() const;
+	virtual void OnSlotAdded(UPanelSlot* InSlot);
+	virtual void OnSlotRemoved(UPanelSlot* InSlot);
 };

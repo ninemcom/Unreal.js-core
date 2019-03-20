@@ -1,6 +1,7 @@
 #include "SJavascriptGraphEdNode.h"
 #include "SJavascriptGraphEdNodePin.h"
 
+#include "Framework/Application/SlateApplication.h"
 #include "JavascriptGraphEdNode.h"
 #include "JavascriptGraphAssetGraphSchema.h"
 #include "SlateOptMacros.h"

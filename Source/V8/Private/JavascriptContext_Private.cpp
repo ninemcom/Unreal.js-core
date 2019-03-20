@@ -2027,7 +2027,7 @@ public:
 					JsValueRef moduleFunc = Self->RunScriptInternal(wrappedScript, relative_path, true);
 					if (chakra::IsEmpty(moduleFunc))
 					{
-						UE_LOG(Javascript, Log, TEXT("Invalid script for require"));
+						UE_LOG(Javascript, Log, TEXT("Invalid script for require: %s"), *relative_path);
 						return false;
 					}
 
@@ -2078,7 +2078,7 @@ public:
 
 					if (err != JsNoError)
 					{
-						UE_LOG(Javascript, Log, TEXT("Invalid script for require"));
+						UE_LOG(Javascript, Log, TEXT("Invalid script for require(0x%08x): %s"), err, *relative_path);
 
 						// make return invalid value
 						returnValue = chakra::Undefined();

@@ -1,17 +1,19 @@
 #pragma once
 
-#include "JavascriptUMGLibrary.h"
-#include "JavascriptObject.h"
-#include "JavascriptIsolate.h"
-#include "JavascriptComboButtonContext.h"
-#include "JavascriptMenuContext.h"
-#include "UICommandInfo.h"
-#include "MultiBoxBuilder.h"
-#include "MultiBoxExtender.h"
-#include "InputBindingManager.h"
-#include "ScriptMacros.h"
-#include "TextProperty.h"
+#include "GeneratedCppIncludes.h"
+#include "Commands/UICommandInfo.h"
+#include "Commands/UICommandList.h"
+#include "Framework/Commands/InputBindingManager.h"
+#include "Framework/MultiBox/MultiBoxExtender.h"
+#include "Input/Events.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "JavascriptContext.h"
 #include "JavascriptMenuLibrary.generated.h"
+
+class FMultiBoxBuilder;
+class FMenuBuilder;
+class FMenuBarBuilder;
+class FToolBarBuilder;
 
 UENUM()
 namespace EJavasrciptUserInterfaceActionType

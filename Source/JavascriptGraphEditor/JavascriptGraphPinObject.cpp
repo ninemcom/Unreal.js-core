@@ -2,6 +2,7 @@
 
 #include "JavascriptGraphPinObject.h"
 #include "JavascriptGraphEdNode.h"
+#include "Widgets/Layout/SBox.h"
 
 #define LOCTEXT_NAMESPACE "JavascriptGraphPinObject"
 

@@ -1,6 +1,8 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 #include "JavascriptScrubControlPanel.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
 #include "SScrubControlPanel.h"
 
 #define LOCTEXT_NAMESPACE "JavascriptScrubControlPanel"

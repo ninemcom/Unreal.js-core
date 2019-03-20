@@ -1,7 +1,12 @@
 #pragma once
 
+#include "CoreMinimal.h"
 #include "JavascriptMenuLibrary.h"
 #include "JavascriptUICommands.generated.h"
+
+DECLARE_DYNAMIC_DELEGATE_OneParam(FJavascriptExecuteAction, FString, Id);
+
+DECLARE_DYNAMIC_DELEGATE_RetVal_OneParam(bool, FJavascriptCanExecuteAction, FString, Id);
 
 /**
 *
@@ -12,10 +17,6 @@ class JAVASCRIPTUMG_API UJavascriptUICommands : public UObject
 	GENERATED_UCLASS_BODY()
 
 public:
-	DECLARE_DYNAMIC_DELEGATE_OneParam(FJavascriptExecuteAction, FString, Id);
-
-	DECLARE_DYNAMIC_DELEGATE_RetVal_OneParam(bool, FJavascriptCanExecuteAction, FString, Id);
-
 	UPROPERTY()
 	FJavascriptExecuteAction OnExecuteAction;	
 

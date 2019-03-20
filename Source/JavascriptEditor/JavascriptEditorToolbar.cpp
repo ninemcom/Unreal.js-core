@@ -1,4 +1,6 @@
 #include "JavascriptEditorToolbar.h"
+#include "Widgets/Layout/SBox.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "SJavascriptBox.h"
 #include "SSpacer.h"
 

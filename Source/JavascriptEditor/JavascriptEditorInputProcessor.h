@@ -1,6 +1,9 @@
 #pragma once
 
+#include "Input/Events.h"
 #include "JavascriptEditorInputProcessor.generated.h"
+
+class IInputProcessor;
 
 /**
  * 

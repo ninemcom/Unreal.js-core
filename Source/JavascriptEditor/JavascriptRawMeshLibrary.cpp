@@ -1,4 +1,5 @@
 #include "JavascriptRawMeshLibrary.h"
+#include "Engine/StaticMesh.h"
 
 #if WITH_EDITOR
 void UJavascriptRawMeshLibrary::Empty(FJavascriptRawMesh& RawMesh)

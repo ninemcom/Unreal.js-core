@@ -2,6 +2,10 @@
 #include "SJavascriptBox.h"
 #include "Components/Widget.h"
 #include "Framework/Commands/GenericCommands.h"
+#include "Framework/MultiBox/MultiBoxDefs.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "JavascriptComboButtonContext.h"
+#include "JavascriptMenuContext.h"
 #include "Components/Widget.h"
 
 FJavascriptUICommandList UJavascriptMenuLibrary::CreateUICommandList()

@@ -1,7 +1,11 @@
 #pragma once
 
 #include "RawMesh.h"
+#include "Engine/StaticMesh.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
 #include "JavascriptRawMeshLibrary.generated.h"
+
+class UStaticMesh;
 
 USTRUCT(BlueprintType)
 struct FJavascriptRawMesh

@@ -1,4 +1,3 @@
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #include "JavascriptEdMode.h"
 #include "SJavascriptBox.h"
@@ -6,6 +5,8 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "Engine/Canvas.h"
 #include "EdMode.h"
 #include "Components/Widget.h"
+
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #if WITH_EDITOR
 #include "Components/Widget.h"

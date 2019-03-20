@@ -3,6 +3,8 @@
 #include "Widget.h"
 #include "JavascriptEditorPopupWindow.generated.h"
 
+class IMenu;
+
 /**
  * 
  */

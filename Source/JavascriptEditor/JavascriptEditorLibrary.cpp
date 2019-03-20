@@ -22,6 +22,7 @@
 #include "Landscape.h"
 #include "LandscapeDataAccess.h"
 #include "LandscapeEdit.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #include "Engine/BrushBuilder.h"
 #include "Engine/Selection.h"

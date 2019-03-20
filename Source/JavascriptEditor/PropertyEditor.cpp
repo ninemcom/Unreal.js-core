@@ -1,4 +1,7 @@
 #include "PropertyEditor.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Modules/ModuleManager.h"
 #if WITH_EDITOR
 #include "IDetailsView.h"
 #endif

@@ -1,4 +1,5 @@
 #include "JavascriptUIExtender.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #if WITH_EDITOR
 #include "JavascriptUICommands.h"

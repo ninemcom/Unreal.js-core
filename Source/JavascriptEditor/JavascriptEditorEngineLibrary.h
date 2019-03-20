@@ -1,5 +1,7 @@
 #pragma once
 #include "JavascriptEditorGlobalDelegates.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "Engine/Brush.h"
 #include "JavascriptEditorEngineLibrary.generated.h"
 
 /**

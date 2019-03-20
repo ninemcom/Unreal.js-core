@@ -1,12 +1,15 @@
 #include "JavascriptEditorViewport.h"
 #include "SEditorViewport.h"
+#include "Framework/Application/SlateApplication.h"
 #include "AdvancedPreviewScene.h"
 #include "Runtime/Engine/Public/Slate/SceneViewport.h"
 #include "EngineUtils.h"
 #include "Engine/Canvas.h"
-#include "EngineUtils.h"
+#include "Engine/StaticMesh.h"
 #include "OverlaySlot.h"
+#include "Widgets/Layout/SBox.h"
 #include "AssetViewerSettings.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "JavascriptEditor"
 

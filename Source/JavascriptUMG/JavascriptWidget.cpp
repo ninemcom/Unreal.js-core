@@ -212,3 +212,18 @@ bool UJavascriptWidget::InitializeWidget_Implementation()
 {
 	return true;
 }
+
+UClass* UJavascriptWidget::GetSlotClass() const
+{
+	return UPanelSlot::StaticClass();
+}
+
+void UJavascriptWidget::OnSlotAdded(UPanelSlot* InSlot)
+{
+
+}
+
+void UJavascriptWidget::OnSlotRemoved(UPanelSlot* InSlot)
+{
+
+}

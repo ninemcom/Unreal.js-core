@@ -6,7 +6,8 @@
 #include "STextComboBox.h"
 
 class FJavascriptLogTextLayoutMarshaller;
-
+class SSearchBox;
+class SEditableTextBox;
 
 /**
 * A single log message for the output log, holding a message and

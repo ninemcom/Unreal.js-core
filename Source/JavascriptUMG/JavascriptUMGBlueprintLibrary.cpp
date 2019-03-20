@@ -1,5 +1,6 @@
 #include "JavascriptUMGBlueprintLibrary.h"
 #include "JavascriptTextModel.h"
+#include "Rendering/DrawElements.h"
 
 FSlateColor UJavascriptUMGBlueprintLibrary::SlateColor_UseForeground()
 {

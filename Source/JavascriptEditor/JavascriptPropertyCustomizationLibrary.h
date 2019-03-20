@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GeneratedCppIncludes.h"
 #include "PropertyHandle.h"
 #include "DetailWidgetRow.h"
 #include "IDetailPropertyRow.h"

@@ -1,4 +1,6 @@
 #include "JavascriptEditorPopupWindow.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Framework/Application/SlateApplication.h"
 
 #if WITH_EDITOR
 bool UJavascriptEditorPopupWindow::Open(const FText& HeadingText, const FVector2D& PopupDesiredSize)
