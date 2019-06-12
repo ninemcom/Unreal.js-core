@@ -44,7 +44,7 @@ void UJavascriptComponent::OnRegister()
 			UE_LOG(Javascript, Log, TEXT("took %.2lfs to expose GEngine"), FPlatformTime::Seconds() - start);
 
 #if PLATFORM_WINDOWS && WITH_EDITOR
-			Context->SetAsDebugContext(9229);
+			// Context->SetAsDebugContext(9229);
 #endif
 		}
 	}

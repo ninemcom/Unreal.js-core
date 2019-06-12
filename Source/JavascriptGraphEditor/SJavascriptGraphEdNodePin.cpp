@@ -85,35 +85,35 @@ void SJavascriptGraphPin::Construct(const FArguments& InArgs, UEdGraphPin* InPin
 		.TextStyle(FEditorStyle::Get(), InArgs._PinLabelStyle)
 		.Visibility(this, &ThisClass::GetPinLabelVisibility)
 		.ColorAndOpacity(this, &ThisClass::GetPinTextColor);
-	TSharedRef<SWidget> ValueWidget = SNew(SBox);
+	TSharedRef<SWidget> valueWidget = SNew(SBox);
 	if (GraphSchema->OnGetValueWidget.IsBound())
 	{
 		auto Widget = GraphSchema->OnGetValueWidget.Execute(FJavascriptEdGraphPin{ const_cast<UEdGraphPin*>(GraphPinObj) }).Widget;
 		if (Widget.IsValid())
 		{
-			ValueWidget = Widget.ToSharedRef();
+			valueWidget = Widget.ToSharedRef();
 		}
 	}
 	// Create the widget used for the pin body (status indicator, label, and value)
-	TSharedRef<SWrapBox> LabelAndValue =
+	TSharedRef<SWrapBox> labelAndValue =
 		SNew(SWrapBox)
 		.PreferredWidth(150.f);
 
 	if (bIsInput)
 	{
-		LabelAndValue->AddSlot()
+		labelAndValue->AddSlot()
 			.VAlign(VAlign_Center)
 			[
 				PinStatusIndicator
 			];
 
 
-		LabelAndValue->AddSlot()
+		labelAndValue->AddSlot()
 			.VAlign(VAlign_Center)
 			[
 				LabelWidget
 			];
-		LabelAndValue->AddSlot()
+		labelAndValue->AddSlot()
 			.Padding(bIsInput ? FMargin(InArgs._SideToSideMargin, 0, 0, 0) : FMargin(0, 0, InArgs._SideToSideMargin, 0))
 			.VAlign(VAlign_Center)
 			[
@@ -121,7 +121,7 @@ void SJavascriptGraphPin::Construct(const FArguments& InArgs, UEdGraphPin* InPin
 				.Padding(0.0f)
 				.IsEnabled(this, &ThisClass::IsEditingEnabled)
 				[
-					ValueWidget
+					valueWidget
 // 					SNew(SHorizontalBox)
 // 					.Visibility(this, &ThisClass::GetDefaultValueVisibility)
 // 					+ SHorizontalBox::Slot()
@@ -133,7 +133,7 @@ void SJavascriptGraphPin::Construct(const FArguments& InArgs, UEdGraphPin* InPin
 	}
 	else
 	{
-		LabelAndValue->AddSlot()
+		labelAndValue->AddSlot()
 			.Padding(bIsInput ? FMargin(InArgs._SideToSideMargin, 0, 0, 0) : FMargin(0, 0, InArgs._SideToSideMargin, 0))
 			.VAlign(VAlign_Center)
 			[
@@ -141,7 +141,7 @@ void SJavascriptGraphPin::Construct(const FArguments& InArgs, UEdGraphPin* InPin
 				.Padding(0.0f)
 				.IsEnabled(this, &ThisClass::IsEditingEnabled)
 				[
-					ValueWidget
+					valueWidget
 // 					SNew(SHorizontalBox)
 // 					.Visibility(this, &ThisClass::GetDefaultValueVisibility)
 // 					+ SHorizontalBox::Slot()
@@ -151,7 +151,7 @@ void SJavascriptGraphPin::Construct(const FArguments& InArgs, UEdGraphPin* InPin
 				]
 			];
 
-		LabelAndValue->AddSlot()
+		labelAndValue->AddSlot()
 			.VAlign(VAlign_Center)
 			[
 				PinStatusIndicator
@@ -175,7 +175,7 @@ void SJavascriptGraphPin::Construct(const FArguments& InArgs, UEdGraphPin* InPin
 			.AutoWidth()
 			.VAlign(VAlign_Center)
 			[
-				LabelAndValue
+				labelAndValue
 			];
 	}
 	else
@@ -186,7 +186,7 @@ void SJavascriptGraphPin::Construct(const FArguments& InArgs, UEdGraphPin* InPin
 			.AutoWidth()
 			.VAlign(VAlign_Center)
 			[
-				LabelAndValue
+				labelAndValue
 			]
 		+ SHorizontalBox::Slot()
 			.AutoWidth()

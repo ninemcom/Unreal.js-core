@@ -16,8 +16,8 @@ class FJavascriptEditorTick : public FTickableEditorObject
 	UJavascriptEditorTick* Object;
 public:
 	FJavascriptEditorTick(UJavascriptEditorTick* InObject)
-		: Object(InObject)
-		, Tickable(true)
+		: Tickable(true)
+		, Object(InObject)
 	{
 		ExecStatusChangedHandle = IV8::Get().GetExecStatusChangedDelegate().AddLambda([=](bool Status) {
 			Tickable = Status;

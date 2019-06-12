@@ -2,6 +2,7 @@
 
 #include "Blueprint/WidgetBlueprintGeneratedClass.h"
 #include "UObject/Class.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "JavascriptWidgetGeneratedClass_Native.generated.h"
 
 struct FJavascriptContext;
@@ -23,11 +24,14 @@ public:
 	// UClass interface
 #if WITH_EDITOR
 	virtual UClass* GetAuthoritativeClass() override { return UClass::GetAuthoritativeClass();  }
+#if ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION < 22
 	virtual void ConditionalRecompileClass(TArray<UObject*>* ObjLoaded) override { UClass::ConditionalRecompileClass(ObjLoaded);  }
+#else
+	virtual void ConditionalRecompileClass(FUObjectSerializeContext* InLoadContext) override { UClass::ConditionalRecompileClass(InLoadContext);  }
+#endif
 	virtual UObject* GetArchetypeForCDO() const override { return UClass::GetArchetypeForCDO();  }
 #endif //WITH_EDITOR
 	virtual bool IsFunctionImplementedInBlueprint(FName InFunctionName) const override { return false;  }
-	virtual uint8* GetPersistentUberGraphFrame(UObject* Obj, UFunction* FuncToCheck) const override { return nullptr;  }
 #if ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION < 12
 	virtual void CreatePersistentUberGraphFrame(UObject* Obj, bool bCreateOnlyIfEmpty = false, bool bSkipSuperClass = false) const override {}
 #else
@@ -37,8 +41,13 @@ public:
 	virtual void Link(FArchive& Ar, bool bRelinkExistingProperties) override { UClass::Link(Ar, bRelinkExistingProperties); }
 	virtual void PurgeClass(bool bRecompilingOnLoad) override { UClass::PurgeClass(bRecompilingOnLoad);  }
 	virtual void Bind() override { UClass::Bind(); }
-	virtual void GetRequiredPreloadDependencies(TArray<UObject*>& DependenciesOut) override { UClass::GetRequiredPreloadDependencies(DependenciesOut);  }
 	virtual UObject* FindArchetype(UClass* ArchetypeClass, const FName ArchetypeName) const override { return UClass::FindArchetype(ArchetypeClass, ArchetypeName);  }
+	
+#if ENGINE_MINOR_VERSION < 21
+	virtual void GetRequiredPreloadDependencies(TArray<UObject*>& DependenciesOut) override { UClass::GetRequiredPreloadDependencies(DependenciesOut); }
+	virtual uint8* GetPersistentUberGraphFrame(UObject* Obj, UFunction* FuncToCheck) const override { return nullptr; }
+#endif
+	
 	// End UClass interface
 
 	//virtual void InitPropertiesFromCustomList(uint8* DataPtr, const uint8* DefaultDataPtr) override;

@@ -887,10 +887,10 @@ FJavascriptStat UJavascriptLibrary::NewStat(
 #if STATS
 	Out.Instance = MakeShareable(new FJavascriptThreadSafeStaticStatBase);
 	Out.Instance->DoSetup(
-		InStatName.GetPlainANSIString(),
+		TCHAR_TO_ANSI(*InStatName.ToString()),
 		*InStatDesc, 
-		InGroupName.GetPlainANSIString(),
-		InGroupCategory.GetPlainANSIString(),
+		TCHAR_TO_ANSI(*InGroupName.ToString()),
+		TCHAR_TO_ANSI(*InGroupCategory.ToString()),
 		*InGroupDesc, 
 		bDefaultEnable, 
 		bShouldClearEveryFrame, 

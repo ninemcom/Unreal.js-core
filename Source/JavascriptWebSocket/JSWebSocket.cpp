@@ -69,8 +69,8 @@ FJavascriptWebSocket::FJavascriptWebSocket(
 FJavascriptWebSocket::FJavascriptWebSocket(WebSocketInternalContext* InContext, WebSocketInternal* InWsi)
 	: Context(InContext)
 	, Wsi(InWsi)
-	, IsServerSide(true)
 	, Protocols(nullptr)
+	, IsServerSide(true)
 {
 }
 

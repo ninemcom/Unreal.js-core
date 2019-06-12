@@ -51,14 +51,14 @@ void SJavascriptGraphPinObject::Construct(const FArguments& InArgs, UEdGraphPin*
 	const UEdGraphSchema* Schema = GraphPinObj->GetSchema();
 	check(Schema);
 
-	TSharedRef<SWrapBox> LabelAndValue =
+	TSharedRef<SWrapBox> labelAndValue =
 		SNew(SWrapBox)
 		.PreferredWidth(150.f);
 
-	TSharedRef<SWidget> ValueWidget = GetValueWidget();
-	if (ValueWidget != SNullWidget::NullWidget)
+	TSharedRef<SWidget> valueWidget = GetValueWidget();
+	if (valueWidget != SNullWidget::NullWidget)
 	{
-		LabelAndValue->AddSlot()
+		labelAndValue->AddSlot()
 			.Padding(FMargin(0, 0, InArgs._SideToSideMargin, 0))
 			.VAlign(VAlign_Center)
 			[
@@ -66,7 +66,7 @@ void SJavascriptGraphPinObject::Construct(const FArguments& InArgs, UEdGraphPin*
 				.Padding(0.0f)
 			.IsEnabled(this, &ThisClass::IsEditingEnabled)
 			[
-				ValueWidget
+				valueWidget
 			]
 			];
 	}
@@ -76,7 +76,7 @@ void SJavascriptGraphPinObject::Construct(const FArguments& InArgs, UEdGraphPin*
 		.AutoWidth()
 		.VAlign(VAlign_Center)
 		[
-			LabelAndValue
+			labelAndValue
 		];
 
 	SBorder::Construct(SBorder::FArguments()

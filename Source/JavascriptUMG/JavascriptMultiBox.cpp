@@ -44,9 +44,9 @@ void UJavascriptMultiBox::AddPullDownMenu(FJavascriptMenuBuilder& Builder, FName
 			Label,
 			ToolTip,
 			FNewMenuDelegate::CreateLambda([this, Id](FMenuBuilder& MenuBuilder) {
-				FJavascriptMenuBuilder Builder;
-				Builder.MultiBox = Builder.Menu = &MenuBuilder;
-				this->OnHook.Execute(Id,this,Builder);
+				FJavascriptMenuBuilder builder;
+				builder.MultiBox = builder.Menu = &MenuBuilder;
+				this->OnHook.Execute(Id,this, builder);
 			})
 		);
 	}
@@ -60,9 +60,9 @@ void UJavascriptMultiBox::AddSubMenu(FJavascriptMenuBuilder& Builder, FName Id, 
 			Label,
 			ToolTip,
 			FNewMenuDelegate::CreateLambda([this, Id](FMenuBuilder& MenuBuilder) {
-				FJavascriptMenuBuilder Builder;
-				Builder.MultiBox = Builder.Menu = &MenuBuilder;
-				this->OnHook.Execute(Id, this, Builder);
+				FJavascriptMenuBuilder builder;
+				builder.MultiBox = builder.Menu = &MenuBuilder;
+				this->OnHook.Execute(Id, this, builder);
 			}),
 			bInOpenSubMenuOnClick,
 			FSlateIcon()

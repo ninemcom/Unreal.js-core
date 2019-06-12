@@ -48,10 +48,10 @@ public class JavascriptEditor : ModuleRules
                 );
             PrivateIncludePaths.AddRange(
                     new string[] {
-				        "Editor/Kismet/Private",
-					    "Editor/GameplayAbilitiesEditor/Private",
-                        "Editor/LandscapeEditor/Private",
-                        "Developer/AssetTools/Private"
+				       // "Editor/Kismet/Private",
+					   // "Editor/GameplayAbilitiesEditor/Private",
+                       // "Editor/LandscapeEditor/Private",
+                       // "Developer/AssetTools/Private"
                     }
                 );
 

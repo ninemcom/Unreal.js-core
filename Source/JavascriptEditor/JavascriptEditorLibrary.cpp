@@ -463,7 +463,11 @@ void UJavascriptEditorLibrary::DrawPolygon(const FJavascriptPDI& PDI, const TArr
 	}
 	
 	static auto TransparentPlaneMaterialXY = (UMaterial*)StaticLoadObject(UMaterial::StaticClass(), NULL, TEXT("/Engine/EditorMaterials/WidgetVertexColorMaterial.WidgetVertexColorMaterial"), NULL, LOAD_None, NULL);
+#if ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION < 22
 	MeshBuilder.Draw(PDI.PDI, FMatrix::Identity, TransparentPlaneMaterialXY->GetRenderProxy(false), DepthPriority, 0.f);
+#else
+	MeshBuilder.Draw(PDI.PDI, FMatrix::Identity, TransparentPlaneMaterialXY->GetRenderProxy(), DepthPriority, 0.f);
+#endif
 }
 
 struct HJavascriptHitProxy : public HHitProxy

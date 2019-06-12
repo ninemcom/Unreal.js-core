@@ -25,17 +25,17 @@ struct TypingGeneratorBase
 
 		//UE_LOG(Javascript, Log, TEXT("Export %s"), *(source->GetName()));
 
-		if (auto s = Cast<UClass>(source))
+		if (auto uclass = Cast<UClass>(source))
 		{
-			ExportClass(s);
+			ExportClass(uclass);
 		}
-		else if (auto s = Cast<UStruct>(source))
+		else if (auto ustruct = Cast<UStruct>(source))
 		{
-			ExportStruct(s);
+			ExportStruct(ustruct);
 		}
-		else if (auto s = Cast<UEnum>(source))
+		else if (auto uenum = Cast<UEnum>(source))
 		{
-			ExportEnum(s);
+			ExportEnum(uenum);
 		}
 	}
 	virtual ~TypingGeneratorBase() {}
@@ -71,99 +71,99 @@ struct TokenWriter
 	
 	void push(UProperty* Property)
 	{
-		if (auto p = Cast<UIntProperty>(Property))
+		if (auto intProperty = Cast<UIntProperty>(Property))
 		{
 			push("number");
 		}
-		else if (auto p = Cast<UFloatProperty>(Property))
+		else if (auto floatProperthy = Cast<UFloatProperty>(Property))
 		{
 			push("number");
 		}
-		else if (auto p = Cast<UBoolProperty>(Property))
+		else if (auto boolProperty = Cast<UBoolProperty>(Property))
 		{
 			push("boolean");
 		}
-		else if (auto p = Cast<UNameProperty>(Property))
+		else if (auto nameProperty = Cast<UNameProperty>(Property))
 		{
 			push("string");
 		}
-		else if (auto p = Cast<UStrProperty>(Property))
+		else if (auto strProperty = Cast<UStrProperty>(Property))
 		{
 			push("string");
 		}
-		else if (auto p = Cast<UTextProperty>(Property))
+		else if (auto textProperty = Cast<UTextProperty>(Property))
 		{
 			push("(FText|string)");
 		}
-		else if (auto p = Cast<UClassProperty>(Property))
+		else if (auto classProperty = Cast<UClassProperty>(Property))
 		{
-			generator.Export(p->MetaClass);
+			generator.Export(classProperty->MetaClass);
 
 			// @HACK
 			push("UnrealEngineClass");
 		}
-		else if (auto p = Cast<UStructProperty>(Property))
+		else if (auto structProperty = Cast<UStructProperty>(Property))
 		{
-			if (p->Struct == FJavascriptFunction::StaticStruct())
+			if (structProperty->Struct == FJavascriptFunction::StaticStruct())
 			{
 				push("(() => void)");
 			}
 			else
 			{
-				generator.Export(p->Struct);
-				push(FV8Config::Safeify(p->Struct->GetName()));
+				generator.Export(structProperty->Struct);
+				push(FV8Config::Safeify(structProperty->Struct->GetName()));
 			}
 		}
-		else if (auto p = Cast<UArrayProperty>(Property))
+		else if (auto arrayProperty = Cast<UArrayProperty>(Property))
 		{
-			generator.Export(p->Inner);
+			generator.Export(arrayProperty->Inner);
 
-			push(p->Inner);
+			push(arrayProperty->Inner);
 			push("[]");
 		}
-		else if (auto p = Cast<UByteProperty>(Property))
+		else if (auto bytePropety = Cast<UByteProperty>(Property))
 		{
-			if (p->Enum)
+			if (bytePropety->Enum)
 			{
-				generator.Export(p->Enum);
-				push(FV8Config::Safeify(p->Enum->GetName()));
+				generator.Export(bytePropety->Enum);
+				push(FV8Config::Safeify(bytePropety->Enum->GetName()));
 			}
 			else
 			{
 				push("number");
 			}
 		}
-		else if (auto p = Cast<UEnumProperty>(Property))
+		else if (auto enumProperty = Cast<UEnumProperty>(Property))
 		{
-			generator.Export(p->GetEnum());
-			push(FV8Config::Safeify(p->GetEnum()->GetName()));
+			generator.Export(enumProperty->GetEnum());
+			push(FV8Config::Safeify(enumProperty->GetEnum()->GetName()));
 		}
-		else if (auto p = Cast<UMulticastDelegateProperty>(Property))
+		else if (auto multicast = Cast<UMulticastDelegateProperty>(Property))
 		{
 			push("(UnrealEngineMulticastDelegate<");
-			push(p->SignatureFunction);
+			push(multicast->SignatureFunction);
 			push("> | (");
-			push(p->SignatureFunction);
+			push(multicast->SignatureFunction);
 			push("))");
 		}
-		else if (auto p = Cast<UDelegateProperty>(Property))
+		else if (auto delegatePropety = Cast<UDelegateProperty>(Property))
 		{
 			push("(UnrealEngineDelegate<");
-			push(p->SignatureFunction);
+			push(delegatePropety->SignatureFunction);
 			push("> | (");
-			push(p->SignatureFunction);
+			push(delegatePropety->SignatureFunction);
 			push("))");
 		}
-		else if (auto p = Cast<USoftObjectProperty>(Property))
+		else if (auto softObject = Cast<USoftObjectProperty>(Property))
 		{
 			push("SoftObject<");
-			push(FV8Config::Safeify(p->PropertyClass->GetName()));
+			push(FV8Config::Safeify(softObject->PropertyClass->GetName()));
 			push(">");
 		}
-		else if (auto p = Cast<UObjectPropertyBase>(Property))
+		else if (auto objectProperty = Cast<UObjectPropertyBase>(Property))
 		{
-			generator.Export(p->PropertyClass);
-			push(FV8Config::Safeify(p->PropertyClass->GetName()));
+			generator.Export(objectProperty->PropertyClass);
+			push(FV8Config::Safeify(objectProperty->PropertyClass->GetName()));
 		}
 		else if (Cast<UMapProperty>(Property) && Cast<UMapProperty>(Property)->KeyProp->IsA<UStrProperty>())
 		{
@@ -411,7 +411,7 @@ struct TypingGenerator : TypingGeneratorBase
 
 			if (has_out_ref)
 			{
-				TArray<FString> Arguments;
+				TArray<FString> arguments;
 				for (TFieldIterator<UProperty> ParamIt(Function); ParamIt; ++ParamIt)
 				{
 					TokenWriter w2(*this);
@@ -421,7 +421,7 @@ struct TypingGenerator : TypingGeneratorBase
 						w2.push("$: ");
 						w2.push(*ParamIt);
 
-						Arguments.Add(*w2);
+						arguments.Add(*w2);
 					}
 					else if ((ParamIt->PropertyFlags & (CPF_ConstParm | CPF_OutParm)) == CPF_OutParm)
 					{
@@ -429,11 +429,11 @@ struct TypingGenerator : TypingGeneratorBase
 						w2.push(": ");
 						w2.push(*ParamIt);
 
-						Arguments.Add(*w2);
+						arguments.Add(*w2);
 					}
 				}
 				w.push("{");
-				w.push(FString::Join(Arguments, TEXT(", ")));
+				w.push(FString::Join(arguments, TEXT(", ")));
 				w.push("}");
 			}
 			else
@@ -647,7 +647,7 @@ struct TypingGenerator : TypingGeneratorBase
 		{
 			const bool is_last = (Index == (Folded.Num() - 1));
 
-			FString Text = Folded[Index];
+			FString text = Folded[Index];
 
 			auto page_name = [&](int32 Index) {
 				return FString::Printf(TEXT("_part_%d_%s.%s"), Index, *BaseFilename, *Extension);
@@ -664,7 +664,7 @@ struct TypingGenerator : TypingGeneratorBase
 					Header.Append(FString::Printf(TEXT("/// <reference path=\"%s\">/>\n"), *page_name(Prev)));
 				}
 
-				Header.Append(Text);
+				Header.Append(text);
 				Text = Header;
 			}
 

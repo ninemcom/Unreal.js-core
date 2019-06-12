@@ -44,7 +44,7 @@ public class V8 : ModuleRules
 
         PublicIncludePaths.AddRange(new string[]
         {
-            Path.Combine("V8", "Public")
+           // Path.Combine("V8", "Public")
         });
 
         PublicDependencyModuleNames.AddRange(new string[] 
@@ -99,8 +99,8 @@ public class V8 : ModuleRules
             PlatformSubdir = Path.Combine(PlatformSubdir, Target.WindowsPlatform.GetVisualStudioCompilerVersionName());
 		}        
 
-        PrivateIncludePaths.Add(Path.Combine(WebsocketPath, "include"));
-        PrivateIncludePaths.Add(Path.Combine(WebsocketPath, "include", PlatformSubdir));
+        //PrivateIncludePaths.Add(Path.Combine(WebsocketPath, "include"));
+        //PrivateIncludePaths.Add(Path.Combine(WebsocketPath, "include", PlatformSubdir));
 		if (Target.Platform == UnrealTargetPlatform.Linux)
         {
 			string platform = "/Linux/" + Target.Architecture;

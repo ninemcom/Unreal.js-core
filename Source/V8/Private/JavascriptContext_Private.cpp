@@ -1093,8 +1093,8 @@ public:
 	}
 
 	FJavascriptContextImplementation(JsRuntimeHandle InRuntime, TArray<FString>& InPaths)
-		: Paths(InPaths)
-		, bGCRequested(false)
+		: bGCRequested(false)
+		, Paths(InPaths)
 	{
 		check(InRuntime != JS_INVALID_RUNTIME_HANDLE);
 
@@ -4930,8 +4930,8 @@ JsValueRef FJavascriptContextImplementation::ConvertValue<FScriptMap>(const FScr
 	{
 		uint8* PairPtr = MapHelper.GetPairPtr(Index);
 
-		JsValueRef Key = InternalReadProperty(mapProperty->KeyProp, PairPtr + mapProperty->MapLayout.KeyOffset, Owner);
-		JsValueRef Value = InternalReadProperty(mapProperty->ValueProp, PairPtr, Owner);
+		JsValueRef Key = InternalReadProperty(mapProperty->KeyProp, MapHelper.GetKeyPtr(Index), Owner);
+		JsValueRef Value = InternalReadProperty(mapProperty->ValueProp, MapHelper.GetValuePtr(Index), Owner);
 
 		JsCheck(JsSetIndexedProperty(Out, Key, Value));
 	}
@@ -5143,8 +5143,8 @@ void FJavascriptContextImplementation::FromValue<FScriptMap>(FScriptMap* Ptr, UP
 
 			int ElementIndex = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
 			uint8* PairPtr = MapHelper.GetPairPtr(ElementIndex);
-			InternalWriteProperty(mapProperty->KeyProp, PairPtr + mapProperty->MapLayout.KeyOffset, Key);
-			InternalWriteProperty(mapProperty->ValueProp, PairPtr, Value);
+			InternalWriteProperty(mapProperty->KeyProp, MapHelper.GetKeyPtr(Index), Key);
+			InternalWriteProperty(mapProperty->ValueProp, MapHelper.GetValuePtr(Index), Value);
 		}
 
 		MapHelper.Rehash();

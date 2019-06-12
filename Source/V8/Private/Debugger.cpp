@@ -170,9 +170,9 @@ public:
 	}	
 
 	FDebugger(int32 InPort, JsRuntimeHandle InRuntime)
-		: bInitialized(false)
+		: Service(nullptr)
 		, Port(InPort)
-		, Service(nullptr)
+		, bInitialized(false)
 		, Runtime(InRuntime)
 	{
 		check(InRuntime != JS_INVALID_RUNTIME_HANDLE);

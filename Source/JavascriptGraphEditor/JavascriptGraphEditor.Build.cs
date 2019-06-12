@@ -10,7 +10,7 @@ namespace UnrealBuildTool.Rules
             PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
             PrivateIncludePaths.AddRange(
 				new string[] {
-                    "JavascriptGraphEditor/Private",
+                   // "JavascriptGraphEditor/Private",
 				}
 				);
 
