@@ -1,5 +1,3 @@
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
-
 #include "SJavascriptLog.h"
 #include "Classes/EditorStyleSettings.h"
 #include "Widgets/Layout/SScrollBorder.h"
@@ -18,6 +16,8 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "../../Launch/Resources/Version.h"
+
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 #define LOCTEXT_NAMESPACE "JavascriptConsole"
 

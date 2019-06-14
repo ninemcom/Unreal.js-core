@@ -1,10 +1,3 @@
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
-
-#ifndef THIRD_PARTY_INCLUDES_START
-#	define THIRD_PARTY_INCLUDES_START
-#	define THIRD_PARTY_INCLUDES_END
-#endif
-
 #include "JavascriptIsolate_Private.h"
 #include "Templates/Tuple.h"
 #include "Config.h"
@@ -28,6 +21,10 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Internationalization/TextNamespaceUtil.h"
 #include "Internationalization/StringTableRegistry.h"
+#include "Internationalization/StringTableCore.h"
+#include "HAL/FileManager.h"
+#include "Engine/Blueprint.h"
+#include "Engine/World.h"
 
 #if WITH_EDITOR
 #include "ScopedTransaction.h"
@@ -36,11 +33,18 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "IV8.h"
 #include "ConsoleDelegate.h"
 
+#ifndef THIRD_PARTY_INCLUDES_START
+#	define THIRD_PARTY_INCLUDES_START
+#	define THIRD_PARTY_INCLUDES_END
+#endif
+
 THIRD_PARTY_INCLUDES_START
 #include <libplatform/libplatform.h>
 THIRD_PARTY_INCLUDES_END
 
 using namespace v8;
+
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 // HACK FOR ACCESS PRIVATE MEMBERS
 class hack_private_key {};
@@ -375,6 +379,8 @@ public:
 
 		// ExportConsole();
 
+		ExportText(ObjectTemplate);
+
 		ExportMemory(ObjectTemplate);
 
 		ExportMisc(ObjectTemplate);		
@@ -532,20 +538,32 @@ public:
 			else
 			{
 				// Wraps the FText to FJavascriptText for supports to js.
-				FString Namespace;
+
+				FName TableID;
 				FString Key;
-				FName TableId;
-				if (Data.IsFromStringTable())
+				auto Context = isolate_->GetCurrentContext();
+				auto TextConstructor = Context->Global()->Get(I.Keyword("FText")).As<Function>();
+
+				if (FTextInspector::GetTableIdAndKey(Data, TableID, Key))
 				{
-					FStringTableRegistry::Get().FindTableIdAndKey(Data, TableId, Key);
+					Local<Value> Args[] = { Undefined(isolate_), I.String(TableID.ToString()), I.String(Key) };
+					return TextConstructor->CallAsConstructor(Context, ARRAY_COUNT(Args), Args).ToLocalChecked();
 				}
-				auto DisplayString = FTextInspector::GetSharedDisplayString(Data);
-				FTextLocalizationManager::Get().FindNamespaceAndKeyFromDisplayString(DisplayString, Namespace, Key);
-				FJavascriptText wrapper = { Data.ToString(), TextNamespaceUtil::StripPackageNamespace(Namespace), Key, TableId, Data };
-				auto Memory = FStructMemoryInstance::Create(FJavascriptText::StaticStruct(), FNoPropertyOwner(), (void*)&wrapper);
-				// set FJavascriptText's lifetime to Owner's;
-				GetSelf(isolate_)->RegisterScriptStructInstance(Memory, v8::External::New(isolate_, Owner.GetOwnerInstancePtr()));
-				return ExportStructInstance(FJavascriptText::StaticStruct(), (uint8*)Memory->GetMemory(), FNoPropertyOwner());
+
+				FString Namespace = FTextInspector::GetNamespace(Data).Get("");
+				Key = FTextInspector::GetKey(Data).Get("");
+				const FString* Source = FTextInspector::GetSourceString(Data);
+
+				if (!Namespace.IsEmpty())
+				{
+					Local<Value> Args[] = { Undefined(isolate_), I.String(Namespace), I.String(Key), I.String(*Source) };
+					return TextConstructor->CallAsConstructor(Context, ARRAY_COUNT(Args), Args).ToLocalChecked();
+				}
+				else
+				{
+					Local<Value> Args[] = { Undefined(isolate_), I.String(*Source) };
+					return TextConstructor->CallAsConstructor(Context, ARRAY_COUNT(Args), Args).ToLocalChecked();
+				}
 			}
 		}		
 		else if (auto p = Cast<UClassProperty>(Property))
@@ -606,17 +624,8 @@ public:
 		}
 		else if (auto p = Cast<USoftObjectProperty>(Property))
 		{
-			// string only
-// 			auto* Data = p->GetObjectPropertyValue_InContainer(Buffer);
-// 			if (Data)
-// 			{
-// 				return ExportObject(Data);
-// 			}
-// 			else
-// 			{
-				auto Value = p->GetPropertyValue_InContainer(Buffer);
-				return V8_String(isolate_, Value.ToString());
-// 			}
+			const FSoftObjectPtr& Value = p->GetPropertyValue_InContainer(Buffer);
+			return ExportStructInstance(TBaseStructure<FSoftObjectPath>::Get(), (uint8*)&Value.ToSoftObjectPath(), Owner);
 		}
 		else if (auto p = Cast<UObjectPropertyBase>(Property))
 		{
@@ -701,7 +710,8 @@ public:
 		for (TFieldIterator<UProperty> PropertyIt(Struct, EFieldIteratorFlags::IncludeSuper); PropertyIt && len; ++PropertyIt)
 		{
 			auto Property = *PropertyIt;
-			auto PropertyName = PropertyNameToString(Property, !bIsEditor);
+			//auto PropertyName = PropertyNameToString(Property, !bIsEditor);
+			FString PropertyName = Property->GetName();
 
 			auto name = I.Keyword(PropertyName);
 			auto value = v8_obj->Get(name);
@@ -752,26 +762,39 @@ public:
 			{
 				p->SetPropertyValue_InContainer(Buffer, FText::FromString(StringFromV8(isolate_, Value)));
 			}
-			else
+			else if (Value->IsString())
 			{
-				const FText& Data = p->GetPropertyValue_InContainer(Buffer);
-
-				auto Instance = FStructMemoryInstance::FromV8(isolate_->GetCurrentContext(), Value);
-				if (Instance)
+				Cast<UTextProperty>(Property)->SetPropertyValue_InContainer(Buffer, FText::FromString(StringFromV8(isolate_, Value)));
+			}
+			else if (Value->IsObject())
+			{
+				auto Object = Value.As<v8::Object>();
+				FText Text = FText::GetEmpty();
+				if (Object->Has(isolate_->GetCurrentContext(), I.Keyword("Table")).FromMaybe(false))
 				{
-					if (Instance->Struct->IsChildOf(FJavascriptText::StaticStruct()))
-					{
-						if (Instance->GetMemory())
-						{
-							auto JText = reinterpret_cast<FJavascriptText*>(Instance->GetMemory());
-							p->SetPropertyValue_InContainer(Buffer, UJavascriptLibrary::UpdateLocalizationText(*JText, Owner));
-						}
-					}
-					else
-						I.Throw(FString::Printf(TEXT("TextProperty needed JavascriptText struct")));
+					FString Table = StringFromV8(isolate_, Object->Get(I.Keyword("Table")));
+					FString Key = StringFromV8(isolate_, Object->Get(I.Keyword("Key")));
+					Text = FText::FromStringTable(*Table, Key);
+				}
+				else if (Object->Has(isolate_->GetCurrentContext(), I.Keyword("Namespace")).FromMaybe(false))
+				{
+					FString Source = StringFromV8(isolate_, Object->Get(I.Keyword("Source")));
+					FString Namespace = StringFromV8(isolate_, Object->Get(I.Keyword("Namespace")));
+					FString Key = StringFromV8(isolate_, Object->Get(I.Keyword("Key")));
+
+					if (!FText::FindText(Namespace, Key, Text))
+						Text = FText::FromString(Source);
+				}
+				else if (Object->Has(isolate_->GetCurrentContext(), I.Keyword("Source")).FromMaybe(false))
+				{
+					Text = FText::FromString(StringFromV8(isolate_, Object->Get(I.Keyword("Source"))));
 				}
 				else
-					I.Throw(FString::Printf(TEXT("Needed JavascriptText struct data")));				
+				{
+					UE_LOG(Javascript, Warning, TEXT("Could not detect text type from object"));
+				}
+
+				Cast<UTextProperty>(Property)->SetPropertyValue_InContainer(Buffer, Text);
 			}
 		}
 		else if (auto p = Cast<UClassProperty>(Property))
@@ -940,6 +963,36 @@ public:
 			{
 				uint8* PropData = p->ContainerPtrToValuePtr<uint8>(Buffer);
 				p->GetUnderlyingProperty()->SetIntPropertyValue(PropData, (int64)EnumValue);
+			}
+		}
+		else if (auto p = Cast<USoftObjectProperty>(Property))
+		{
+			if (Value->IsString())
+			{
+				FSoftObjectPtr SoftPtr(FSoftObjectPath(StringFromV8(isolate_, Value)));
+				p->SetPropertyValue_InContainer(Buffer, SoftPtr);
+			}
+			else if (Value->IsObject())
+			{
+				auto Object = Value.As<v8::Object>();
+				UObject* Instance = UObjectFromV8(isolate_->GetCurrentContext(), Value);
+				if (Instance)
+				{
+					p->SetPropertyValue_InContainer(Buffer, FSoftObjectPtr(Instance));
+				}
+				else
+				{
+					// maybe path
+					FString AssetPathName = StringFromV8(isolate_, Object->Get(I.Keyword("AssetPathName")));
+					FString SubPathString = StringFromV8(isolate_, Object->Get(I.Keyword("SubPathString")));
+
+					p->SetPropertyValue_InContainer(Buffer, FSoftObjectPtr(FSoftObjectPath(*AssetPathName, SubPathString)));
+				}
+			}
+			else
+			{
+				// invalid
+				p->SetObjectPropertyValue_InContainer(Buffer, nullptr);
 			}
 		}
 		else if (auto p = Cast<UObjectPropertyBase>(Property))
@@ -1143,6 +1196,132 @@ public:
 		global_templ->Set(I.Keyword("$profile"), I.FunctionTemplate(exec_profile));
 #endif
 	}
+
+	void ExportText(Local<ObjectTemplate> global_templ)
+	{
+		auto func = [](const FunctionCallbackInfo<Value>& info) -> void {
+			auto isolate = info.GetIsolate();
+			FIsolateHelper I(isolate);
+
+			if (!info.IsConstructCall())
+			{
+				I.Throw("Only creating new instance is allowed");
+				return;
+			}
+
+			auto self = info.This();
+			if (info.Length() == 1)
+			{
+				check(info[0]->IsString());
+				self->Set(I.Keyword("Source"), info[0]);
+			}
+			else if (info.Length() == 2)
+			{
+				check(info[0]->IsString());
+				self->Set(I.Keyword("Table"), info[0]);
+
+				check(info[1]->IsString());
+				self->Set(I.Keyword("Key"), info[1]);
+			}
+			else if (info.Length() == 3)
+			{
+				check(info[0]->IsString());
+				self->Set(I.Keyword("Namespace"), info[0]);
+
+				check(info[1]->IsString());
+				self->Set(I.Keyword("Key"), info[1]);
+
+				check(info[2]->IsString());
+				self->Set(I.Keyword("Source"), info[2]);
+			}
+		};
+
+		//auto funcFindText = [](const FunctionCallbackInfo<Value>& info) {
+		//	auto isolate = info.GetIsolate();
+		//	if (info.Length() < 3)
+		//		return Undefined(isolate);
+
+		//	JsValueRef Template = reinterpret_cast<JsValueRef>(callbackState);
+		//	JsValueRef Instance = JS_INVALID_REFERENCE;
+		//	JsCheck(JsConstructObject(Template, arguments, 4, &Instance));
+
+		//	return Instance;
+		//};
+
+		//auto funcFromStringTable = [](const FunctionCallbackInfo<Value> info) {
+		//	FIsolateHelper I(info.GetIsolate());
+		//	if (info.Length() < 2)
+		//	{
+		//		I.Throw("Too few arguments");
+		//		return;
+		//	}
+
+		//	JsValueRef Template = reinterpret_cast<JsValueRef>(callbackState);
+		//	JsValueRef Instance = JS_INVALID_REFERENCE;
+		//	JsCheck(JsConstructObject(Template, arguments, 3, &Instance));
+
+		//	return Instance;
+		//};
+
+		auto funcToString = [](const FunctionCallbackInfo<Value>& info) -> void {
+			auto isolate = info.GetIsolate();
+			FIsolateHelper I(isolate);
+
+			Local<Object> Self = info.This();
+			FText Text = FText::GetEmpty();
+
+			if (Self->Has(isolate->GetCurrentContext(), I.Keyword("Table")).FromMaybe(false))
+			{
+				FName Table = *StringFromV8(isolate, Self->Get(I.Keyword("Table")));
+				FString Key = StringFromV8(isolate, Self->Get(I.Keyword("Key")));
+				FStringTableConstPtr TablePtr = FStringTableRegistry::Get().FindStringTable(Table);
+				if (!TablePtr.IsValid() && LoadObject<UObject>(nullptr, *Table.ToString()))
+				{
+					TablePtr = FStringTableRegistry::Get().FindStringTable(Table);
+				}
+
+				if (TablePtr.IsValid() && TablePtr->FindEntry(Key).IsValid())
+				{
+					Text = FText::FromStringTable(Table, Key);
+				}
+				else
+				{
+					Text = FText::FromString(Key);
+				}
+			}
+			else if (Self->Has(isolate->GetCurrentContext(), I.Keyword("Namespace")).FromMaybe(false))
+			{
+				FString Source = StringFromV8(isolate, Self->Get(I.Keyword("Source")));
+				FString Namespace = StringFromV8(isolate, Self->Get(I.Keyword("Namespace")));
+				FString Key = StringFromV8(isolate, Self->Get(I.Keyword("Key")));
+
+				if (!FText::FindText(Namespace, Key, Text))
+					Text = FText::FromString(Source);
+			}
+			else if (Self->Has(isolate->GetCurrentContext(), I.Keyword("Source")).FromMaybe(false))
+			{
+				Text = FText::FromString(StringFromV8(isolate, Self->Get(I.Keyword("Source"))));
+			}
+			else
+			{
+				UE_LOG(Javascript, Warning, TEXT("Could not detext text type from object"));
+			}
+
+			info.GetReturnValue().Set(I.String(Text.ToString()));
+		};
+
+		FIsolateHelper I(isolate_);
+
+		Local<FunctionTemplate> Template = v8::FunctionTemplate::New(isolate_, func);
+		Template->SetClassName(I.Keyword("FText"));
+
+		Local<ObjectTemplate> Prototype = Template->PrototypeTemplate();
+		Prototype->Set(I.Keyword("toString"), v8::FunctionTemplate::New(isolate_, funcToString));
+		Prototype->Set(I.Keyword("valueOf"), v8::FunctionTemplate::New(isolate_, funcToString));
+
+		global_templ->Set(I.Keyword("FText"), Template);
+	}
+
 
 	void ExportMemory(Local<ObjectTemplate> global_templ)
 	{
@@ -1664,7 +1843,8 @@ public:
 			PropertyAccessors::Set(isolate, info.This(), Property, value, Flags);			
 		};
 		
-		auto Name = PropertyNameToString(PropertyToExport, !bIsEditor);
+		//auto Name = PropertyNameToString(PropertyToExport, !bIsEditor);
+		FString Name = PropertyToExport->GetName();
 		Template->PrototypeTemplate()->SetAccessor(
 			I.Keyword(Name),
 			Getter,
@@ -2025,7 +2205,7 @@ public:
 
 					if (FV8Config::CanExportProperty(Class, Property))
 					{
-						auto PropertyName = PropertyNameToString(Property, false);
+						FString PropertyName = Property->GetName();
 
 						auto name = I.Keyword(PropertyName);
 						auto value = PropertyAccessor::Get(isolate, self, Property);
@@ -2118,7 +2298,7 @@ public:
 
 					if (FV8Config::CanExportProperty(Class, Property))
 					{
-						auto PropertyName = PropertyNameToString(Property, true);
+						FString PropertyName = Property->GetName();
 
 						auto name = I.Keyword(PropertyName);
 						auto value = PropertyAccessor::Get(isolate, self, Property);
@@ -2213,7 +2393,8 @@ public:
 				{
 					FScriptArrayHelper_InContainer helper(p, Instance);
 
-					if (FV8Config::CanExportProperty(Class, Property) && MatchPropertyName(Property,PropertyNameToAccess))
+					//if (FV8Config::CanExportProperty(Class, Property) && MatchPropertyName(Property,PropertyNameToAccess))
+					if (FV8Config::CanExportProperty(Class, Property))
 					{
 						Handle<Value> argv[1];
 

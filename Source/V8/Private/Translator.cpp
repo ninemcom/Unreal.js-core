@@ -112,33 +112,4 @@ namespace v8
 
 		return FString::Join(ArgStrings, TEXT(" "));
 	}
-
-	FString PropertyNameToString(UProperty* Property, bool bConvertComparisionIndex)
-	{
-		auto Struct = Property->GetOwnerStruct();
-		auto displayName = Property->GetFName();
-		auto name = bConvertComparisionIndex ? FName(displayName.GetComparisonIndex(), displayName.GetComparisonIndex(), displayName.GetNumber()) : displayName;
-		if (Struct)
-		{
-			if (auto s = Cast<UUserDefinedStruct>(Struct))
-			{
-				return s->PropertyNameToDisplayName(name);
-			}
-		}
-		return name.ToString();
-	}
-
-	bool MatchPropertyName(UProperty* Property, FName NameToMatch)
-	{
-		auto Struct = Property->GetOwnerStruct();
-		auto name = Property->GetFName();
-		if (Struct)
-		{
-			if (auto s = Cast<UUserDefinedStruct>(Struct))
-			{
-				return s->PropertyNameToDisplayName(name) == NameToMatch.ToString();
-			}
-		}
-		return name == NameToMatch;
-	}
 }

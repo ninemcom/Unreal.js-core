@@ -34,6 +34,10 @@ struct FV8Config
 		{
 			return TEXT("UFocusEvent");
 		}
+		else if (Name == "Text")
+		{
+			return TEXT("FText");
+		}
 		else
 		{
 			return Name.Replace(TEXT(" "),TEXT(""));
@@ -75,9 +79,8 @@ struct FV8Config
 		
 	static bool CanExportProperty(const UStruct* Class, const UProperty* Property)
 	{
-		// Skip unsupported static array and interface.
-		if (Property->ArrayDim > 1 ||			
-			Property->IsA(UInterfaceProperty::StaticClass()))
+		// Skip unsupported interface.
+		if (Property->IsA(UInterfaceProperty::StaticClass()))
 		{
 			return false;
 		}

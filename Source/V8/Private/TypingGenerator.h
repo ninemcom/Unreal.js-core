@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "Translator.h"
 #include "Misc/FileHelper.h"
+#include "JavascriptIsolate.h"
 
 struct TypingGeneratorBase
 {
@@ -105,8 +106,15 @@ struct TokenWriter
 		}
 		else if (auto p = Cast<UStructProperty>(Property))
 		{
-			generator.Export(p->Struct);
-			push(FV8Config::Safeify(p->Struct->GetName()));
+			if (p->Struct == FJavascriptFunction::StaticStruct())
+			{
+				push("(() => void)");
+			}
+			else
+			{
+				generator.Export(p->Struct);
+				push(FV8Config::Safeify(p->Struct->GetName()));
+			}
 		}
 		else if (auto p = Cast<UArrayProperty>(Property))
 		{
@@ -134,25 +142,39 @@ struct TokenWriter
 		}
 		else if (auto p = Cast<UMulticastDelegateProperty>(Property))
 		{
-			push("UnrealEngineMulticastDelegate<");
+			push("(UnrealEngineMulticastDelegate<");
 			push(p->SignatureFunction);
-			push(">");
+			push("> | (");
+			push(p->SignatureFunction);
+			push("))");
 		}
 		else if (auto p = Cast<UDelegateProperty>(Property))
 		{
-			push("UnrealEngineDelegate<");
+			push("(UnrealEngineDelegate<");
 			push(p->SignatureFunction);
-			push(">");
+			push("> | (");
+			push(p->SignatureFunction);
+			push("))");
 		}
-		else if (auto p = Cast<UObjectProperty>(Property))
+		else if (auto p = Cast<UObjectPropertyBase>(Property))
 		{
 			generator.Export(p->PropertyClass);
 			push(FV8Config::Safeify(p->PropertyClass->GetName()));
 		}
 		else if (auto p = Cast<USoftObjectProperty>(Property))
 		{
-			generator.Export(p->PropertyClass);
+			push("SoftObject<");
 			push(FV8Config::Safeify(p->PropertyClass->GetName()));
+			push(">");
+		}
+		else if (Cast<UMapProperty>(Property) && Cast<UMapProperty>(Property)->KeyProp->IsA<UStrProperty>())
+		{
+			UProperty* ValueProp = Cast<UMapProperty>(Property)->ValueProp;
+			generator.Export(ValueProp);
+
+			push("{[key:string]: ");
+			push(ValueProp);
+			push("}");
 		}
 		else
 		{
@@ -169,7 +191,7 @@ struct TokenWriter
 		{
 			auto Prop = *It;
 			if (!first) push(", ");
-			push(FV8Config::Safeify(PropertyNameToString(Prop)));
+			push(FV8Config::Safeify(Prop->GetName()));
 			push(": ");
 			push(Prop);
 			first = false;
@@ -331,7 +353,7 @@ struct TypingGenerator : TypingGeneratorBase
 		for (TFieldIterator<UProperty> PropertyIt(source, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
 		{
 			auto Property = *PropertyIt;
-			auto PropertyName = FV8Config::Safeify(PropertyNameToString(Property));
+			auto PropertyName = FV8Config::Safeify(Property->GetName());
 
 			w.tooltip("\t", Property);
 
@@ -368,7 +390,7 @@ struct TypingGenerator : TypingGeneratorBase
 				}
 
 				auto Property = *ParamIt;
-				auto PropertyName = FV8Config::Safeify(PropertyNameToString(Property));
+				auto PropertyName = FV8Config::Safeify(Property->GetName());
 
 				w2.push(PropertyName);
 				if (is_optional)
@@ -405,7 +427,7 @@ struct TypingGenerator : TypingGeneratorBase
 					}
 					else if ((ParamIt->PropertyFlags & (CPF_ConstParm | CPF_OutParm)) == CPF_OutParm)
 					{
-						w2.push(PropertyNameToString(*ParamIt));
+						w2.push(ParamIt->GetName());
 						w2.push(": ");
 						w2.push(*ParamIt);
 
@@ -547,6 +569,26 @@ struct TypingGenerator : TypingGeneratorBase
 		w.push("declare class UnrealEngineDelegate<T> {\n");
 		w.push("\tAdd(fn : T): void;\n");
 		w.push("\tRemove(fn : T): void;\n");
+		w.push("}\n\n");
+
+		w.push("declare class FText {\n");
+		w.push("\tSource: string;\n");
+		w.push("\tTable: string;\n");
+		w.push("\tKey: string;\n");
+		w.push("\tNamespace: string;\n");
+		w.push("\tconstructor(source : string);\n");
+		w.push("\tconstructor(table : string, key : string);\n");
+		w.push("\tconstructor(namespace : string, key : string, source : string);\n");
+		w.push("\ttoString(): string;\n");
+		w.push("\tvalueOf(): string;\n");
+		w.push("\tstatic FindText(namespace : string, key : string, source : string = ''): FText;\n");
+		w.push("\tstatic FromStringTable(tableId : string, key : string): FText;\n");
+		w.push("}\n\n");
+		
+		w.push("declare class SoftObject<T> {\n");
+		w.push("\tAssetPathName: string;");
+		w.push("\tSubPathString: string;");
+		w.push("\tResolve(): T;");
 		w.push("}\n\n");
 
 		w.push("declare class Process {\n");

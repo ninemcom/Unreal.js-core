@@ -1,5 +1,3 @@
-PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
-
 #include "JavascriptContext_Private.h"
 #include "JavascriptIsolate.h"
 #include "JavascriptContext.h"
@@ -32,6 +30,8 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "JavascriptStats.h"
 
 #include "../../Launch/Resources/Version.h"
+
+PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 using namespace v8;
 
