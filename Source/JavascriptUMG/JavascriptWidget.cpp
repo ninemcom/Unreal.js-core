@@ -25,6 +25,22 @@ void UJavascriptWidget::ProcessEvent(UFunction* Function, void* Parms)
 	Super::ProcessEvent(Function, Parms);	
 }
 
+bool UJavascriptWidget::Initialize()
+{
+	bool ret = Super::Initialize();
+	if (ret == false)
+	{
+		return false;
+	}
+
+	return InitializeWidget();
+}
+
+bool UJavascriptWidget::InitializeWidget_Implementation()
+{
+	return true;
+}
+
 void UJavascriptWidget::CallSynchronizeProperties(UVisual* Visual)
 {
 	if (auto Widget = Cast<UWidget>(Visual))
