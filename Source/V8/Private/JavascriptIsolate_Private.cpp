@@ -496,7 +496,7 @@ public:
 		}
 	}	
 
-	Local<Value> InternalReadProperty(UProperty* Property, uint8* Buffer, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags)
+	Local<Value> InternalReadProperty(UProperty* Property, uint8* Buffer, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags, int Offset)
 	{
 		FIsolateHelper I(isolate_);
 
@@ -508,29 +508,29 @@ public:
 
 		if (auto p = Cast<UIntProperty>(Property))
 		{
-			return Int32::New(isolate_, p->GetPropertyValue_InContainer(Buffer));
+			return Int32::New(isolate_, p->GetPropertyValue_InContainer(Buffer, Offset));
 		}
 		else if (auto p = Cast<UFloatProperty>(Property))
 		{
-			return Number::New(isolate_, p->GetPropertyValue_InContainer(Buffer));
+			return Number::New(isolate_, p->GetPropertyValue_InContainer(Buffer, Offset));
 		}
 		else if (auto p = Cast<UBoolProperty>(Property))
 		{
-            return v8::Boolean::New(isolate_, p->GetPropertyValue_InContainer(Buffer));
+            return v8::Boolean::New(isolate_, p->GetPropertyValue_InContainer(Buffer, Offset));
 		}
 		else if (auto p = Cast<UNameProperty>(Property))
 		{
-			auto name = p->GetPropertyValue_InContainer(Buffer);
+			auto name = p->GetPropertyValue_InContainer(Buffer, Offset);
 			return I.Keyword(name.ToString());
 		}
 		else if (auto p = Cast<UStrProperty>(Property))
 		{
-			const FString& Data = p->GetPropertyValue_InContainer(Buffer);
+			const FString& Data = p->GetPropertyValue_InContainer(Buffer, Offset);
 			return V8_String(isolate_, Data);
 		}
 		else if (auto p = Cast<UTextProperty>(Property))
 		{
-			const FText& Data = p->GetPropertyValue_InContainer(Buffer);
+			const FText& Data = p->GetPropertyValue_InContainer(Buffer, Offset);
 			if (!Flags.Alternative)
 			{
 				return V8_String(isolate_, Data.ToString());
@@ -568,7 +568,7 @@ public:
 		}		
 		else if (auto p = Cast<UClassProperty>(Property))
 		{			
-			auto Class = Cast<UClass>(p->GetPropertyValue_InContainer(Buffer));
+			auto Class = Cast<UClass>(p->GetPropertyValue_InContainer(Buffer, Offset));
 
 			if (Class)
 			{
@@ -583,7 +583,7 @@ public:
 		{
 			if (auto ScriptStruct = Cast<UScriptStruct>(p->Struct))
 			{	
-				return ExportStructInstance(ScriptStruct, p->ContainerPtrToValuePtr<uint8>(Buffer), Owner);
+				return ExportStructInstance(ScriptStruct, p->ContainerPtrToValuePtr<uint8>(Buffer, Offset), Owner);
 			}			
 			else
 			{
@@ -594,7 +594,7 @@ public:
 		}		
 		else if (auto p = Cast<UArrayProperty>(Property))
 		{
-			FScriptArrayHelper_InContainer helper(p, Buffer);
+			FScriptArrayHelper_InContainer helper(p, Buffer, Offset);
 			auto len = (uint32_t)(helper.Num());
 			auto arr = Array::New(isolate_, len);
 			auto context = isolate_->GetCurrentContext();
@@ -624,16 +624,16 @@ public:
 		}
 		else if (auto p = Cast<USoftObjectProperty>(Property))
 		{
-			const FSoftObjectPtr& Value = p->GetPropertyValue_InContainer(Buffer);
+			const FSoftObjectPtr& Value = p->GetPropertyValue_InContainer(Buffer, Offset);
 			return ExportStructInstance(TBaseStructure<FSoftObjectPath>::Get(), (uint8*)&Value.ToSoftObjectPath(), Owner);
 		}
 		else if (auto p = Cast<UObjectPropertyBase>(Property))
 		{
-			return ExportObject(p->GetObjectPropertyValue_InContainer(Buffer));
+			return ExportObject(p->GetObjectPropertyValue_InContainer(Buffer, Offset));
 		}	
 		else if (auto p = Cast<UByteProperty>(Property))
 		{
-			auto Value = p->GetPropertyValue_InContainer(Buffer);
+			auto Value = p->GetPropertyValue_InContainer(Buffer, Offset);
 
 			if (p->Enum)
 			{							
@@ -651,7 +651,7 @@ public:
 		}
 		else if (auto p = Cast<USetProperty>(Property))
 		{
-			FScriptSetHelper_InContainer SetHelper(p, Buffer);
+			FScriptSetHelper_InContainer SetHelper(p, Buffer, Offset);
 
 			auto Out = Array::New(isolate_);
 
@@ -660,14 +660,14 @@ public:
 			{
 				auto PairPtr = SetHelper.GetElementPtr(Index);
 
-				Out->Set(Index, InternalReadProperty(p->ElementProp, SetHelper.GetElementPtr(Index), Owner, Flags));
+				Out->Set(Index, ReadProperty(isolate_, p->ElementProp, SetHelper.GetElementPtr(Index), Owner, Flags));
 			}
 
 			return Out;
 		}
 		else if (auto p = Cast<UMapProperty>(Property))
 		{
-			FScriptMapHelper_InContainer MapHelper(p, Buffer);
+			FScriptMapHelper_InContainer MapHelper(p, Buffer, Offset);
 
 			auto Out = Object::New(isolate_);
 
@@ -678,9 +678,9 @@ public:
 #if ENGINE_MINOR_VERSION < 22
 				auto Key = InternalReadProperty(p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Owner, Flags);
 #else
-				auto Key = InternalReadProperty(p->KeyProp, PairPtr, Owner, Flags);
+				auto Key = ReadProperty(isolate_, p->KeyProp, PairPtr, Owner, Flags);
 #endif
-				auto Value = InternalReadProperty(p->ValueProp, PairPtr, Owner, Flags);
+				auto Value = ReadProperty(isolate_, p->ValueProp, PairPtr, Owner, Flags);
 
 				Out->Set(Key, Value);
 			}
@@ -719,12 +719,12 @@ public:
 			if (!value.IsEmpty() && !value->IsUndefined())
 			{
 				len--;
-				InternalWriteProperty(Property, struct_buffer, value, FNoPropertyOwner(), FPropertyAccessorFlags());
+				WriteProperty(isolate_, Property, struct_buffer, value, FNoPropertyOwner(), FPropertyAccessorFlags());
 			}
 		}
 	}	
 
-	void InternalWriteProperty(UProperty* Property, uint8* Buffer, Handle<Value> Value, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags)
+	void InternalWriteProperty(UProperty* Property, uint8* Buffer, Handle<Value> Value, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags, int Offset)
 	{
 		FIsolateHelper I(isolate_);
 
@@ -738,33 +738,33 @@ public:
 
 		if (auto p = Cast<UIntProperty>(Property))
 		{
-			p->SetPropertyValue_InContainer(Buffer, Value->Int32Value(isolate_->GetCurrentContext()).ToChecked());
+			p->SetPropertyValue_InContainer(Buffer, Value->Int32Value(isolate_->GetCurrentContext()).ToChecked(), Offset);
 		}
 		else if (auto p = Cast<UFloatProperty>(Property))
 		{
-			p->SetPropertyValue_InContainer(Buffer, Value->NumberValue(isolate_->GetCurrentContext()).ToChecked());
+			p->SetPropertyValue_InContainer(Buffer, Value->NumberValue(isolate_->GetCurrentContext()).ToChecked(), Offset);
 		}
 		else if (auto p = Cast<UBoolProperty>(Property))
 		{
-			p->SetPropertyValue_InContainer(Buffer, Value->BooleanValue(isolate_->GetCurrentContext()).ToChecked());
+			p->SetPropertyValue_InContainer(Buffer, Value->BooleanValue(isolate_->GetCurrentContext()).ToChecked(), Offset);
 		}
 		else if (auto p = Cast<UNameProperty>(Property))
 		{			
-			p->SetPropertyValue_InContainer(Buffer, FName(*StringFromV8(isolate_, Value)));
+			p->SetPropertyValue_InContainer(Buffer, FName(*StringFromV8(isolate_, Value)), Offset);
 		}
 		else if (auto p = Cast<UStrProperty>(Property))
 		{
-			p->SetPropertyValue_InContainer(Buffer, StringFromV8(isolate_, Value));
+			p->SetPropertyValue_InContainer(Buffer, StringFromV8(isolate_, Value), Offset);
 		}		
 		else if (auto p = Cast<UTextProperty>(Property))
 		{
 			if (!Flags.Alternative)
 			{
-				p->SetPropertyValue_InContainer(Buffer, FText::FromString(StringFromV8(isolate_, Value)));
+				p->SetPropertyValue_InContainer(Buffer, FText::FromString(StringFromV8(isolate_, Value)), Offset);
 			}
 			else if (Value->IsString())
 			{
-				Cast<UTextProperty>(Property)->SetPropertyValue_InContainer(Buffer, FText::FromString(StringFromV8(isolate_, Value)));
+				Cast<UTextProperty>(Property)->SetPropertyValue_InContainer(Buffer, FText::FromString(StringFromV8(isolate_, Value)), Offset);
 			}
 			else if (Value->IsObject())
 			{
@@ -794,7 +794,7 @@ public:
 					UE_LOG(Javascript, Warning, TEXT("Could not detect text type from object"));
 				}
 
-				Cast<UTextProperty>(Property)->SetPropertyValue_InContainer(Buffer, Text);
+				Cast<UTextProperty>(Property)->SetPropertyValue_InContainer(Buffer, Text, Offset);
 			}
 		}
 		else if (auto p = Cast<UClassProperty>(Property))
@@ -804,29 +804,29 @@ public:
 				auto UString = StringFromV8(isolate_, Value);
 				if (UString == TEXT("null"))
 				{
-					p->SetPropertyValue_InContainer(Buffer, nullptr);
+					p->SetPropertyValue_InContainer(Buffer, nullptr, Offset);
 				}
 				else
 				{
 					auto Object = StaticLoadObject(UObject::StaticClass(), nullptr, *UString);					
 					if (auto Class = Cast<UClass>(Object))
 					{
-						p->SetPropertyValue_InContainer(Buffer, Class);
+						p->SetPropertyValue_InContainer(Buffer, Class, Offset);
 					}
 					else if (auto BP = Cast<UBlueprint>(Object))
 					{
 						auto BPGC = BP->GeneratedClass;
-						p->SetPropertyValue_InContainer(Buffer, BPGC);
+						p->SetPropertyValue_InContainer(Buffer, BPGC, Offset);
 					}
 					else
 					{
-						p->SetPropertyValue_InContainer(Buffer, Object);
+						p->SetPropertyValue_InContainer(Buffer, Object, Offset);
 					}
 				}
 			}
 			else
 			{
-				p->SetPropertyValue_InContainer(Buffer, UClassFromV8(isolate_, Value));
+				p->SetPropertyValue_InContainer(Buffer, UClassFromV8(isolate_, Value), Offset);
 			}
 		}
 		else if (auto p = Cast<UStructProperty>(Property))
@@ -843,7 +843,7 @@ public:
 					// Type-checking needed
 					if (GivenStruct->IsChildOf(ScriptStruct))
 					{
-						p->CopyCompleteValue(p->ContainerPtrToValuePtr<void>(Buffer), Instance->GetMemory());
+						p->CopyCompleteValue(p->ContainerPtrToValuePtr<void>(Buffer, Offset), Instance->GetMemory());
 					}
 					else
 					{				
@@ -852,7 +852,7 @@ public:
 				}
 				else if (p->Struct->IsChildOf(FJavascriptFunction::StaticStruct()))
 				{
-					auto struct_buffer = p->ContainerPtrToValuePtr<uint8>(Buffer);
+					auto struct_buffer = p->ContainerPtrToValuePtr<uint8>(Buffer, Offset);
 					FJavascriptFunction func;
 					if (Value->IsFunction())
 					{
@@ -866,7 +866,7 @@ public:
 				}
 				else if (p->Struct->IsChildOf(FJavascriptRef::StaticStruct()))
 				{
-					auto struct_buffer = p->ContainerPtrToValuePtr<uint8>(Buffer);
+					auto struct_buffer = p->ContainerPtrToValuePtr<uint8>(Buffer, Offset);
 					FJavascriptRef ref;
 
 					if (Value->IsObject())
@@ -882,7 +882,7 @@ public:
 				else if (Value->IsObject())
 				{
 					auto v8_obj = Value->ToObject(isolate_->GetCurrentContext());
-					auto struct_buffer = p->ContainerPtrToValuePtr<uint8>(Buffer);
+					auto struct_buffer = p->ContainerPtrToValuePtr<uint8>(Buffer, Offset);
 
 					auto Struct = p->Struct;
 
@@ -908,7 +908,7 @@ public:
 				auto arr = Handle<Array>::Cast(Value);
 				auto len = arr->Length();
 
-				FScriptArrayHelper_InContainer helper(p, Buffer);
+				FScriptArrayHelper_InContainer helper(p, Buffer, Offset);
 
 				// synchronize the length
 				auto CurSize = (uint32_t)helper.Num();
@@ -943,12 +943,12 @@ public:
 				}
 				else
 				{
-					p->SetPropertyValue_InContainer(Buffer, EnumValue);
+					p->SetPropertyValue_InContainer(Buffer, EnumValue, Offset);
 				}
 			}			
 			else
 			{				
-				p->SetPropertyValue_InContainer(Buffer, Value->Int32Value(isolate_->GetCurrentContext()).ToChecked());
+				p->SetPropertyValue_InContainer(Buffer, Value->Int32Value(isolate_->GetCurrentContext()).ToChecked(), Offset);
 			}
 		}
 		else if (auto p = Cast<UEnumProperty>(Property))
@@ -961,7 +961,7 @@ public:
 			}
 			else
 			{
-				uint8* PropData = p->ContainerPtrToValuePtr<uint8>(Buffer);
+				uint8* PropData = p->ContainerPtrToValuePtr<uint8>(Buffer, Offset);
 				p->GetUnderlyingProperty()->SetIntPropertyValue(PropData, (int64)EnumValue);
 			}
 		}
@@ -970,7 +970,7 @@ public:
 			if (Value->IsString())
 			{
 				FSoftObjectPtr SoftPtr(FSoftObjectPath(StringFromV8(isolate_, Value)));
-				p->SetPropertyValue_InContainer(Buffer, SoftPtr);
+				p->SetPropertyValue_InContainer(Buffer, SoftPtr, Offset);
 			}
 			else if (Value->IsObject())
 			{
@@ -978,7 +978,7 @@ public:
 				UObject* Instance = UObjectFromV8(isolate_->GetCurrentContext(), Value);
 				if (Instance)
 				{
-					p->SetPropertyValue_InContainer(Buffer, FSoftObjectPtr(Instance));
+					p->SetPropertyValue_InContainer(Buffer, FSoftObjectPtr(Instance), Offset);
 				}
 				else
 				{
@@ -986,18 +986,18 @@ public:
 					FString AssetPathName = StringFromV8(isolate_, Object->Get(I.Keyword("AssetPathName")));
 					FString SubPathString = StringFromV8(isolate_, Object->Get(I.Keyword("SubPathString")));
 
-					p->SetPropertyValue_InContainer(Buffer, FSoftObjectPtr(FSoftObjectPath(*AssetPathName, SubPathString)));
+					p->SetPropertyValue_InContainer(Buffer, FSoftObjectPtr(FSoftObjectPath(*AssetPathName, SubPathString)), Offset);
 				}
 			}
 			else
 			{
 				// invalid
-				p->SetObjectPropertyValue_InContainer(Buffer, nullptr);
+				p->SetObjectPropertyValue_InContainer(Buffer, nullptr, Offset);
 			}
 		}
 		else if (auto p = Cast<UObjectPropertyBase>(Property))
 		{
-			p->SetObjectPropertyValue_InContainer(Buffer, UObjectFromV8(isolate_->GetCurrentContext(), Value));
+			p->SetObjectPropertyValue_InContainer(Buffer, UObjectFromV8(isolate_->GetCurrentContext(), Value), Offset);
 		}
 		else if (auto p = Cast<USetProperty>(Property))
 		{
@@ -1006,14 +1006,14 @@ public:
 				auto arr = Handle<Array>::Cast(Value);
 				auto len = arr->Length();
 
-				FScriptSetHelper_InContainer SetHelper(p, Buffer);
+				FScriptSetHelper_InContainer SetHelper(p, Buffer, Offset);
 
 				auto Num = SetHelper.Num();
 				for (int Index = 0; Index < Num; ++Index)
 				{
 					const int32 ElementIndex = SetHelper.AddDefaultValue_Invalid_NeedsRehash();
 					uint8* ElementPtr = SetHelper.GetElementPtr(Index);
-					InternalWriteProperty(p->ElementProp, ElementPtr, arr->Get(Index), Owner, Flags);
+					WriteProperty(isolate_, p->ElementProp, ElementPtr, arr->Get(Index), Owner, Flags);
 				}
 
 				SetHelper.Rehash();
@@ -1026,7 +1026,7 @@ public:
 				auto context = isolate_->GetCurrentContext();
 				auto v = Value->ToObject(context).ToLocalChecked();
 
-				FScriptMapHelper_InContainer MapHelper(p, Buffer);
+				FScriptMapHelper_InContainer MapHelper(p, Buffer, Offset);
 
 				auto PropertyNames = v->GetOwnPropertyNames(context).ToLocalChecked();
 				auto Num = PropertyNames->Length();
@@ -1039,11 +1039,11 @@ public:
 
 					uint8* PairPtr = MapHelper.GetPairPtr(ElementIndex);
 #if ENGINE_MINOR_VERSION < 22
-					InternalWriteProperty(p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Key, Owner, Flags);
+					WriteProperty(isolate_, p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Key, Owner, Flags);
 #else
-					InternalWriteProperty(p->KeyProp, PairPtr, Key, Owner, Flags);
+					WriteProperty(isolate_, p->KeyProp, PairPtr, Key, Owner, Flags);
 #endif
-					InternalWriteProperty(p->ValueProp, PairPtr, Value, Owner, Flags);
+					WriteProperty(isolate_, p->ValueProp, PairPtr, Value, Owner, Flags);
 				}
 			}
 		}
@@ -2995,12 +2995,38 @@ FJavascriptIsolate* FJavascriptIsolate::Create(bool bIsEditor)
 
 Local<Value> FJavascriptIsolate::ReadProperty(Isolate* isolate, UProperty* Property, uint8* Buffer, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags)
 {
-	return FJavascriptIsolateImplementation::GetSelf(isolate)->InternalReadProperty(Property, Buffer, Owner, Flags);
+	if (Property->ArrayDim == 1)
+	{
+		return FJavascriptIsolateImplementation::GetSelf(isolate)->InternalReadProperty(Property, Buffer, Owner, Flags, 0);
+	}
+
+	auto ArrayValue = Array::New(isolate);
+	for (int i = 0; i < Property->ArrayDim; i++)
+	{
+		auto Element = FJavascriptIsolateImplementation::GetSelf(isolate)->InternalReadProperty(Property, Buffer, Owner, Flags, i);
+		ArrayValue->Set(isolate->GetCurrentContext(), i, Element).Check();
+	}
+
+	// TODO seal array process
+
+	return ArrayValue;
 }
 
 void FJavascriptIsolate::WriteProperty(Isolate* isolate, UProperty* Property, uint8* Buffer, Handle<Value> Value, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags)
 {
-	FJavascriptIsolateImplementation::GetSelf(isolate)->InternalWriteProperty(Property, Buffer, Value, Owner, Flags);
+	if (Value->IsArray() && Property->ArrayDim > 1)
+	{
+		check(Value.As<Array>()->Length() == Property->ArrayDim);
+		for (int i = 0; i < Property->ArrayDim; i++)
+		{
+			FJavascriptIsolateImplementation::GetSelf(isolate)->InternalWriteProperty(Property, Buffer, Value, Owner, Flags, i);
+		}
+	}
+	else
+	{
+		check(Property->ArrayDim <= 1);
+		FJavascriptIsolateImplementation::GetSelf(isolate)->InternalWriteProperty(Property, Buffer, Value, Owner, Flags, 0);
+	}
 }
 
 void FPendingClassConstruction::Finalize(FJavascriptIsolate* Isolate, UObject* UnrealObject)
