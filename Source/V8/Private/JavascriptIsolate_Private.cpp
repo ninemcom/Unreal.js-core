@@ -706,6 +706,8 @@ public:
 		auto arr = _arr.ToLocalChecked();
 
 		auto len = arr->Length();
+
+		Struct->InitializeStruct(struct_buffer);
 		
 		for (TFieldIterator<UProperty> PropertyIt(Struct, EFieldIteratorFlags::IncludeSuper); PropertyIt && len; ++PropertyIt)
 		{
@@ -1825,7 +1827,7 @@ public:
 			check(data->IsExternal());
 
 			auto Flags = FPropertyAccessorFlags();
-			Flags.Alternative = StringFromV8(isolate, property)[0] == '$';
+			Flags.Alternative = true; // StringFromV8(isolate, property)[0] == '$';
 			auto Property = reinterpret_cast<UProperty*>((Local<External>::Cast(data))->Value());
 			info.GetReturnValue().Set(PropertyAccessors::Get(isolate, info.This(), Property, Flags));			
 		};
@@ -1838,7 +1840,7 @@ public:
 			check(data->IsExternal())			
 
 			auto Flags = FPropertyAccessorFlags();
-			Flags.Alternative = StringFromV8(isolate, property)[0] == '$';
+			Flags.Alternative = true; // StringFromV8(isolate, property)[0] == '$';
 			auto Property = reinterpret_cast<UProperty*>((Local<External>::Cast(data))->Value());
 			PropertyAccessors::Set(isolate, info.This(), Property, value, Flags);			
 		};
