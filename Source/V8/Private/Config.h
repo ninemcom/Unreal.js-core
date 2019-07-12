@@ -40,7 +40,7 @@ struct FV8Config
 		}
 		else
 		{
-			return Name.Replace(TEXT(" "),TEXT(""));
+			return Name.Replace(TEXT(" "), TEXT("")).Replace(TEXT("-"), TEXT("_"));
 		}
 	}
 
