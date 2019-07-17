@@ -8,7 +8,7 @@ UJavascriptCommandlet::UJavascriptCommandlet(const FObjectInitializer& ObjectIni
 
 int32 UJavascriptCommandlet::Main(const FString& Params)
 {
-	bool bSuccess = false;
+	bool bSuccess = true;
 
 #if !UE_BUILD_SHIPPING
 	const TCHAR* ParamStr = *Params;
