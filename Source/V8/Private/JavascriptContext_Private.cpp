@@ -38,6 +38,8 @@ using namespace v8;
 static const int kContextEmbedderDataIndex = 0;
 static const int32 MagicNumber = 0x2852abd3;
 static const FString URL_FilePrefix(TEXT("file:///"));
+static const FString URL_PakPrefix(TEXT("Pak: "));
+static const FString URL_PakExt(TEXT(".pak"));
 
 static FString LocalPathToURL(FString Path)
 {
@@ -49,6 +51,13 @@ static FString URLToLocalPath(FString URL)
 	if (URL.StartsWith(*URL_FilePrefix))
 	{
 		URL = URL.Mid(URL_FilePrefix.Len()).Replace(TEXT("%20"), TEXT(" "));
+	}
+	if (URL.StartsWith(URL_PakPrefix))
+	{
+		int PakExtIdx = URL.Find(URL_PakExt);
+		check(PakExtIdx != INDEX_NONE);
+
+		URL = URL.Mid(PakExtIdx + URL_PakExt.Len());
 	}
 #if PLATFORM_WINDOWS
 	URL = URL.Replace(TEXT("\\"), TEXT("/"));
@@ -1489,7 +1498,29 @@ public:
 
 			auto inner = [&](const FString& script_path)
 			{
-				auto full_path = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*script_path);
+				auto relative_path = script_path.Replace(TEXT("/./"), TEXT("/"), ESearchCase::CaseSensitive);
+
+				// path referencing .. cleansing
+				int pos = relative_path.Len();
+				while (true)
+				{
+					int idx = relative_path.Find("/../", ESearchCase::CaseSensitive, ESearchDir::FromEnd, pos);
+					if (idx < 0)
+						break;
+
+					int parentIdx = relative_path.Find("/", ESearchCase::CaseSensitive, ESearchDir::FromEnd, idx) + 1;
+					FString parent = relative_path.Mid(parentIdx, idx - parentIdx);
+					if (parent == "..")
+					{
+						pos = idx + 1;
+						continue;
+					}
+
+					relative_path = relative_path.Mid(0, parentIdx) + relative_path.Mid(idx + 4);
+					pos = relative_path.Len(); // reset counter
+				}
+
+				auto full_path = FPaths::ConvertRelativePathToFull(relative_path);
 #if PLATFORM_WINDOWS
 				full_path = full_path.Replace(TEXT("/"), TEXT("\\"));
 #endif
@@ -1502,7 +1533,8 @@ public:
 				}
 
 				FString Text;
-				if (FFileHelper::LoadFileToString(Text, *script_path))
+				UE_LOG(Javascript, Log, TEXT("try to read file (%s, %s)"), *relative_path, *full_path);
+				if (FFileHelper::LoadFileToString(Text, *relative_path))
 				{
 					Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports; (function () { %s\n })()\n;return module.exports;}(this,'%s', '%s'));"), *Text, *script_path, *FPaths::GetPath(script_path));
 					auto exports = Self->RunScript(full_path, Text, 0);
@@ -1537,7 +1569,7 @@ public:
 				if (FFileHelper::LoadFileToString(Text, *(script_path / TEXT("package.json"))))
 				{
 					Text = FString::Printf(TEXT("(function (json) {return json.main;})(%s);"), *Text);
-					auto full_path = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*script_path);
+					auto full_path = FPaths::ConvertRelativePathToFull(script_path);
 #if PLATFORM_WINDOWS
 					full_path = full_path.Replace(TEXT("/"), TEXT("\\"));
 #endif
@@ -1557,7 +1589,7 @@ public:
 
 			auto inner_json = [&](const FString& script_path)
 			{
-				auto full_path = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*script_path);
+				auto full_path = FPaths::ConvertRelativePathToFull(script_path);
 #if PLATFORM_WINDOWS
 				full_path = full_path.Replace(TEXT("/"), TEXT("\\"));
 #endif
@@ -1651,6 +1683,7 @@ public:
 				return;
 
 			auto current_script_path = FPaths::GetPath(StringFromV8(isolate, StackTrace::CurrentStackTrace(isolate, 1, StackTrace::kScriptName)->GetFrame(isolate, 0)->GetScriptName()));
+			UE_LOG(Javascript, Log, TEXT("Current script: '%s'"), *current_script_path);
 			current_script_path = URLToLocalPath(current_script_path);
 
 			if (!(required_module[0] == '.' && inner2(current_script_path)))
@@ -1670,6 +1703,7 @@ public:
 
 			if (!found)
 			{
+				UE_LOG(Javascript, Warning, TEXT("Undefined required script '%s'"), *required_module);
 				info.GetReturnValue().Set(Undefined(isolate));
 			}
 		};
@@ -1701,7 +1735,7 @@ public:
 				const auto& name = it.Key();
 				const auto& module = it.Value();
 
-				auto FullPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*name);
+				auto FullPath = FPaths::ConvertRelativePathToFull(name);
 				out->Set(V8_String(isolate, name), V8_String(isolate, TCHAR_TO_UTF8(*FullPath)));
 			}
 
@@ -1843,7 +1877,7 @@ public:
 			auto FullPath = Path / Filename;
 			if (IFileManager::Get().FileExists(*FullPath))
 			{
-				return IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*FullPath);
+				return FullPath;
 			}
 		}
 		return Filename;
@@ -1855,7 +1889,10 @@ public:
 
 		FString Text;
 
-		FFileHelper::LoadFileToString(Text, *Path);
+		if (!FFileHelper::LoadFileToString(Text, *Path))
+		{
+			UE_LOG(Javascript, Warning, TEXT("Failed to read script file '%s'"), *Filename);
+		}
 
 		return Text;
 	}
@@ -1868,6 +1905,7 @@ public:
 
 		auto ScriptPath = GetScriptFileFullPath(Filename);
 		auto Text = FString::Printf(TEXT("(function (global,__filename,__dirname) { %s\n;}(this,'%s','%s'));"), *Script, *ScriptPath, *FPaths::GetPath(ScriptPath));
+		UE_LOG(Javascript, Log, TEXT("Running file '%s'"), *ScriptPath);
 		return RunScript(ScriptPath, Text, 0);
 	}
 

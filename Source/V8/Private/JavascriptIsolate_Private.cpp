@@ -546,8 +546,8 @@ public:
 
 				if (FTextInspector::GetTableIdAndKey(Data, TableID, Key))
 				{
-					Local<Value> Args[] = { Undefined(isolate_), I.String(TableID.ToString()), I.String(Key) };
-					return TextConstructor->CallAsConstructor(Context, ARRAY_COUNT(Args), Args).ToLocalChecked();
+					Local<Value> Args[] = { I.String(TableID.ToString()), I.String(Key) };
+					return TextConstructor->NewInstance(Context, ARRAY_COUNT(Args), Args).ToLocalChecked();
 				}
 
 				FString Namespace = FTextInspector::GetNamespace(Data).Get("");
@@ -556,13 +556,13 @@ public:
 
 				if (!Namespace.IsEmpty())
 				{
-					Local<Value> Args[] = { Undefined(isolate_), I.String(Namespace), I.String(Key), I.String(*Source) };
-					return TextConstructor->CallAsConstructor(Context, ARRAY_COUNT(Args), Args).ToLocalChecked();
+					Local<Value> Args[] = { I.String(Namespace), I.String(Key), I.String(*Source) };
+					return TextConstructor->NewInstance(Context, ARRAY_COUNT(Args), Args).ToLocalChecked();
 				}
 				else
 				{
-					Local<Value> Args[] = { Undefined(isolate_), I.String(*Source) };
-					return TextConstructor->CallAsConstructor(Context, ARRAY_COUNT(Args), Args).ToLocalChecked();
+					Local<Value> Args[] = { I.String(*Source) };
+					return TextConstructor->NewInstance(Context, ARRAY_COUNT(Args), Args).ToLocalChecked();
 				}
 			}
 		}		
@@ -2418,6 +2418,7 @@ public:
 		FIsolateHelper I(isolate_);
 
 		EscapableHandleScope handle_scope(isolate_);
+		UE_LOG(Javascript, Log, TEXT("Export %s"), *ClassToExport->GetName());
 
 		auto ConstructorBody = [](const FunctionCallbackInfo<Value>& info)
 		{
