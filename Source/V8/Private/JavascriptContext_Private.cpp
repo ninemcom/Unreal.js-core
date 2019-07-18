@@ -1474,6 +1474,7 @@ public:
 	{
 		auto fn = [](const FunctionCallbackInfo<Value>& info) {
 			auto isolate = info.GetIsolate();
+			FIsolateHelper I(isolate);
 			HandleScope scope(isolate);
 
 			if (info.Length() != 1 || !(info[0]->IsString()))
@@ -1527,16 +1528,47 @@ public:
 				//UE_LOG(Javascript, Log, TEXT("try to read file (%s, %s)"), *relative_path, *full_path);
 				if (FFileHelper::LoadFileToString(Text, *relative_path))
 				{
-					Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports; (function () { %s\n })()\n;return module.exports;}(this,'%s', '%s'));"), *Text, *script_path, *FPaths::GetPath(script_path));
-					auto exports = Self->RunScript(full_path, Text, 0);
-					if (exports.IsEmpty())
+					//Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports; (function () { %s\n })()\n;return module.exports;}(this,'%s', '%s'));"), *Text, *script_path, *FPaths::GetPath(script_path));
+					Text = FString::Printf(TEXT("module => (function (global, __filename, __dirname) { var exports = module.exports; (function () { %s\n })();return module.exports;\n}(this,'%s', '%s'));"), *Text, *script_path, *FPaths::GetPath(script_path));
+					auto moduleInitFunc = Self->RunScript(full_path, Text, 0);
+					if (!moduleInitFunc.IsEmpty() && ensure(moduleInitFunc->IsFunction()))
+					{
+						auto module = Object::New(isolate);
+						Local<Value> exports = Object::New(isolate);
+						module->Set(I.Keyword("exports"), exports);
+
+						// prevent circular require
+						Self->Modules.Add(full_path, UniquePersistent<Value>(isolate, exports));
+
+						// run require script
+						Local<Value> args[] = { module };
+						bool success = moduleInitFunc.As<Function>()->CallAsFunction(isolate->GetCurrentContext(), Undefined(isolate), 1, args).ToLocal(&exports);
+
+						if (success)
+						{
+							// set if exports is updated
+							Self->Modules[full_path].Reset(isolate, exports);
+						}
+						else
+						{
+							// remove module if failed
+							Self->Modules.Remove(full_path);
+						}
+					}
+					else
 					{
 						UE_LOG(Javascript, Warning, TEXT("Invalid script for require"));
+						Self->Modules.Add(full_path, UniquePersistent<Value>(isolate, Undefined(isolate)));
 					}
-					Self->Modules.Add(full_path, UniquePersistent<Value>(isolate, exports));
-					info.GetReturnValue().Set(exports);
-					found = true;
-					return true;
+
+					if (Self->Modules.Contains(full_path))
+					{
+						info.GetReturnValue().Set(Self->Modules[full_path]);
+						found = true;
+						return true;
+					}
+
+					return false;
 				}
 
 				return false;
