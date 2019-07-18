@@ -1125,16 +1125,16 @@ public:
 								Function->FunctionFlags |= FUNC_HasOutParms;
 							}
 
-							if (Property->HasAnyPropertyFlags(CPF_ReturnParm))
-							{
-								Function->ReturnValueOffset = Property->GetOffset_ForUFunction();
+							//if (Property->HasAnyPropertyFlags(CPF_ReturnParm))
+							//{
+							//	Function->ReturnValueOffset = Property->GetOffset_ForUFunction();
 
-								if (!Property->HasAnyPropertyFlags(CPF_IsPlainOldData | CPF_NoDestructor))
-								{
-									Property->DestructorLinkNext = Function->DestructorLink;
-									Function->DestructorLink = Property;
-								}
-							}
+							//	if (!Property->HasAnyPropertyFlags(CPF_IsPlainOldData | CPF_NoDestructor))
+							//	{
+							//		Property->DestructorLinkNext = Function->DestructorLink;
+							//		Function->DestructorLink = Property;
+							//	}
+							//}
 						}
 						else
 						{
@@ -1533,14 +1533,14 @@ public:
 				}
 
 				FString Text;
-				UE_LOG(Javascript, Log, TEXT("try to read file (%s, %s)"), *relative_path, *full_path);
+				//UE_LOG(Javascript, Log, TEXT("try to read file (%s, %s)"), *relative_path, *full_path);
 				if (FFileHelper::LoadFileToString(Text, *relative_path))
 				{
 					Text = FString::Printf(TEXT("(function (global, __filename, __dirname) { var module = { exports : {}, filename : __filename }, exports = module.exports; (function () { %s\n })()\n;return module.exports;}(this,'%s', '%s'));"), *Text, *script_path, *FPaths::GetPath(script_path));
 					auto exports = Self->RunScript(full_path, Text, 0);
 					if (exports.IsEmpty())
 					{
-						UE_LOG(Javascript, Log, TEXT("Invalid script for require"));
+						UE_LOG(Javascript, Warning, TEXT("Invalid script for require"));
 					}
 					Self->Modules.Add(full_path, UniquePersistent<Value>(isolate, exports));
 					info.GetReturnValue().Set(exports);
@@ -1683,7 +1683,7 @@ public:
 				return;
 
 			auto current_script_path = FPaths::GetPath(StringFromV8(isolate, StackTrace::CurrentStackTrace(isolate, 1, StackTrace::kScriptName)->GetFrame(isolate, 0)->GetScriptName()));
-			UE_LOG(Javascript, Log, TEXT("Current script: '%s'"), *current_script_path);
+			//UE_LOG(Javascript, Log, TEXT("Current script: '%s'"), *current_script_path);
 			current_script_path = URLToLocalPath(current_script_path);
 
 			if (!(required_module[0] == '.' && inner2(current_script_path)))
@@ -1905,7 +1905,7 @@ public:
 
 		auto ScriptPath = GetScriptFileFullPath(Filename);
 		auto Text = FString::Printf(TEXT("(function (global,__filename,__dirname) { %s\n;}(this,'%s','%s'));"), *Script, *ScriptPath, *FPaths::GetPath(ScriptPath));
-		UE_LOG(Javascript, Log, TEXT("Running file '%s'"), *ScriptPath);
+		//UE_LOG(Javascript, Log, TEXT("Running file '%s'"), *ScriptPath);
 		return RunScript(ScriptPath, Text, 0);
 	}
 

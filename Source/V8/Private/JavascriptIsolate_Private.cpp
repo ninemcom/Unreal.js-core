@@ -2418,7 +2418,7 @@ public:
 		FIsolateHelper I(isolate_);
 
 		EscapableHandleScope handle_scope(isolate_);
-		UE_LOG(Javascript, Log, TEXT("Export %s"), *ClassToExport->GetName());
+		//UE_LOG(Javascript, Log, TEXT("Export %s"), *ClassToExport->GetName());
 
 		auto ConstructorBody = [](const FunctionCallbackInfo<Value>& info)
 		{
