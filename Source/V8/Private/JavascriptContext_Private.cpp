@@ -38,8 +38,6 @@ using namespace v8;
 static const int kContextEmbedderDataIndex = 0;
 static const int32 MagicNumber = 0x2852abd3;
 static const FString URL_FilePrefix(TEXT("file:///"));
-static const FString URL_PakPrefix(TEXT("Pak: "));
-static const FString URL_PakExt(TEXT(".pak"));
 
 static FString LocalPathToURL(FString Path)
 {
@@ -51,13 +49,6 @@ static FString URLToLocalPath(FString URL)
 	if (URL.StartsWith(*URL_FilePrefix))
 	{
 		URL = URL.Mid(URL_FilePrefix.Len()).Replace(TEXT("%20"), TEXT(" "));
-	}
-	if (URL.StartsWith(URL_PakPrefix))
-	{
-		int PakExtIdx = URL.Find(URL_PakExt);
-		check(PakExtIdx != INDEX_NONE);
-
-		URL = URL.Mid(PakExtIdx + URL_PakExt.Len());
 	}
 #if PLATFORM_WINDOWS
 	URL = URL.Replace(TEXT("\\"), TEXT("/"));
