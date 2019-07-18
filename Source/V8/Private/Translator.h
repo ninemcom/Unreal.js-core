@@ -52,7 +52,7 @@ struct FStructMemoryPropertyOwner : IPropertyOwner
 
 struct FPropertyAccessorFlags
 {
-	bool Alternative = false;
+	bool Alternative = true;
 };
 
 namespace v8
