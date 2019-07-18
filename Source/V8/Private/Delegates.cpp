@@ -193,8 +193,10 @@ public:
 
 	void Remove(Local<Function> function)
 	{
-		auto obj = FindJavascriptDelegateByFunction(isolate_->GetCurrentContext(), function);
+		if (!WeakObject.IsValid())
+			return;
 
+		auto obj = FindJavascriptDelegateByFunction(isolate_->GetCurrentContext(), function);
 		if (obj)
 		{
 			Unbind(obj);
