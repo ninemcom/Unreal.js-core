@@ -646,7 +646,8 @@ public:
 		}
 		else if (auto p = Cast<UEnumProperty>(Property))
 		{
-			int32 Value = p->GetUnderlyingProperty()->GetValueTypeHash(Buffer);
+			uint8* PropData = p->ContainerPtrToValuePtr<uint8>(Buffer, Offset);
+			int32 Value = p->GetUnderlyingProperty()->GetSignedIntPropertyValue(PropData);
 			return I.Keyword(p->GetEnum()->GetNameStringByIndex(Value));
 		}
 		else if (auto p = Cast<USetProperty>(Property))
