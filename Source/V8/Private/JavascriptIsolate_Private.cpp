@@ -1038,8 +1038,6 @@ public:
 					auto Value = v->Get(context, Key).ToLocalChecked();
 
 					auto ElementIndex = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
-					MapHelper.Rehash();
-
 					uint8* PairPtr = MapHelper.GetPairPtr(ElementIndex);
 #if ENGINE_MINOR_VERSION < 22
 					WriteProperty(isolate_, p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Key, Owner, Flags);
@@ -1048,6 +1046,8 @@ public:
 #endif
 					WriteProperty(isolate_, p->ValueProp, PairPtr, Value, Owner, Flags);
 				}
+
+				MapHelper.Rehash();
 			}
 		}
 	};		
