@@ -8,6 +8,11 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 
 using namespace v8;
 
+static void AddDelegateProxy(const FunctionCallbackInfo<Value>& info);
+static void RemoveDelegateProxy(const FunctionCallbackInfo<Value>& info);
+static void ClearDelegateProxy(const FunctionCallbackInfo<Value>& info);
+static void ToJSONDelegateProxy(const FunctionCallbackInfo<Value>& info);
+
 class FJavascriptDelegate : public FGCObject, public TSharedFromThis<FJavascriptDelegate>
 {
 public:
@@ -59,89 +64,12 @@ public:
 		context_.Reset(isolate_, context);
 
 		auto out = Object::New(isolate_);
-
-		auto add = [](const FunctionCallbackInfo<Value>& info) {
-			for (;;)
-			{
-				auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
-				if (info.Length() == 1)
-				{
-					auto func = Local<Function>::Cast(info[0]);
-					if (!func.IsEmpty())
-					{
-						payload->Add(func);
-						break;
-					}
-				}
-
-				UE_LOG(Javascript, Log, TEXT("Invalid argument for delegate"));
-				break;
-			}
-		};
-
-		auto remove = [](const FunctionCallbackInfo<Value>& info) {
-			for (;;)
-			{
-				auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
-				if (info.Length() == 1)
-				{
-					auto func = Local<Function>::Cast(info[0]);
-					if (!func.IsEmpty())
-					{
-						payload->Remove(func);
-						break;
-					}
-				}
-
-				UE_LOG(Javascript, Log, TEXT("Invalid argument for delegate"));
-				break;
-			}
-		};
-
-		auto clear = [](const FunctionCallbackInfo<Value>& info) {
-			auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
-			payload->Clear();			
-		};
-
-		auto toJSON = [](const FunctionCallbackInfo<Value>& info) {
-			auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
-
-			uint32_t Index = 0;			
-			auto arr = Array::New(info.GetIsolate(), payload->DelegateObjects.Num());
-			const bool bIsMulticastDelegate = payload->Property->IsA(UMulticastDelegateProperty::StaticClass());
-
-			for (auto DelegateObject : payload->DelegateObjects)
-			{
-				auto JavascriptFunction = payload->functions.Find(DelegateObject->UniqueId);
-				if (JavascriptFunction)
-				{
-					auto function = Local<Function>::New(info.GetIsolate(), *JavascriptFunction);
-					if (!bIsMulticastDelegate)
-					{
-						info.GetReturnValue().Set(function);
-						return;
-					}
-					
-					arr->Set(Index++, function);
-				}
-			}
-
-			if (!bIsMulticastDelegate)
-			{
-				info.GetReturnValue().Set(Null(info.GetIsolate()));
-			}
-			else
-			{
-				info.GetReturnValue().Set(arr);
-			}			
-		};
-
 		auto data = External::New(isolate_, this);
 
-		(void)out->Set(context, V8_KeywordString(isolate_, "Add"), Function::New(context, add, data).ToLocalChecked());
-		(void)out->Set(context, V8_KeywordString(isolate_, "Remove"), Function::New(context, remove, data).ToLocalChecked());
-		(void)out->Set(context, V8_KeywordString(isolate_, "Clear"), Function::New(context, clear, data).ToLocalChecked());
-		(void)out->Set(context, V8_KeywordString(isolate_, "toJSON"), Function::New(context, toJSON, data).ToLocalChecked());
+		(void)out->Set(context, V8_KeywordString(isolate_, "Add"), Function::New(context, &AddDelegateProxy, data).ToLocalChecked());
+		(void)out->Set(context, V8_KeywordString(isolate_, "Remove"), Function::New(context, &RemoveDelegateProxy, data).ToLocalChecked());
+		(void)out->Set(context, V8_KeywordString(isolate_, "Clear"), Function::New(context, &ClearDelegateProxy, data).ToLocalChecked());
+		(void)out->Set(context, V8_KeywordString(isolate_, "toJSON"), Function::New(context, &ToJSONDelegateProxy, data).ToLocalChecked());
 
 		WrappedObject.Reset(isolate_, out);
 
@@ -209,6 +137,9 @@ public:
 
 	void Clear()
 	{
+		if (!WeakObject.IsValid())
+			return;
+
 		while (DelegateObjects.Num())
 		{
 			Unbind(DelegateObjects[0]);
@@ -316,6 +247,78 @@ public:
 			}
 		}
 	}
+};
+
+void AddDelegateProxy(const FunctionCallbackInfo<Value>& info)
+{
+	auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
+	if (info.Length() == 1)
+	{
+		auto func = Local<Function>::Cast(info[0]);
+		if (!func.IsEmpty())
+		{
+			payload->Add(func);
+			return;
+		}
+	}
+
+	UE_LOG(Javascript, Log, TEXT("Invalid argument for delegate"));
+}
+
+void RemoveDelegateProxy(const FunctionCallbackInfo<Value>& info)
+{
+	auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
+	if (info.Length() == 1)
+	{
+		auto func = Local<Function>::Cast(info[0]);
+		if (!func.IsEmpty())
+		{
+			payload->Remove(func);
+			return;
+		}
+	}
+
+	UE_LOG(Javascript, Log, TEXT("Invalid argument for delegate"));
+};
+
+void ClearDelegateProxy(const FunctionCallbackInfo<Value>& info)
+{
+	auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
+	payload->Clear();
+};
+
+void ToJSONDelegateProxy(const FunctionCallbackInfo<Value>& info)
+{
+	auto payload = reinterpret_cast<FJavascriptDelegate*>(Local<External>::Cast(info.Data())->Value());
+
+	uint32_t Index = 0;			
+	auto arr = Array::New(info.GetIsolate(), payload->DelegateObjects.Num());
+	const bool bIsMulticastDelegate = payload->Property->IsA(UMulticastDelegateProperty::StaticClass());
+
+	for (auto DelegateObject : payload->DelegateObjects)
+	{
+		auto JavascriptFunction = payload->functions.Find(DelegateObject->UniqueId);
+		if (JavascriptFunction)
+		{
+			auto function = Local<Function>::New(info.GetIsolate(), *JavascriptFunction);
+			if (!bIsMulticastDelegate)
+			{
+				info.GetReturnValue().Set(function);
+				return;
+			}
+			
+			arr->Set(Index++, function);
+		}
+	}
+
+	if (!bIsMulticastDelegate)
+	{
+		info.GetReturnValue().Set(Null(info.GetIsolate()));
+	}
+	else
+	{
+		info.GetReturnValue().Set(arr);
+	}			
 };
 
 struct FDelegateManager : IDelegateManager

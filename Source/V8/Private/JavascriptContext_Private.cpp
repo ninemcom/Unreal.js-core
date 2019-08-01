@@ -56,12 +56,12 @@ static FString URLToLocalPath(FString URL)
 	return URL;
 }
 
-static TArray<FString> StringArrayFromV8(Isolate* isolate, Handle<Value> InArray)
+static TArray<FString> StringArrayFromV8(Isolate* isolate, Local<Value> InArray)
 {
 	TArray<FString> OutArray;
 	if (!InArray.IsEmpty() && InArray->IsArray())
 	{
-		auto arr = Handle<Array>::Cast(InArray);
+		auto arr = Local<Array>::Cast(InArray);
 		auto len = arr->Length();
 
 		for (decltype(len) Index = 0; Index < len; ++Index)
@@ -452,7 +452,7 @@ static UProperty* CreateProperty(UObject* Outer, FName Name, const TArray<FStrin
 	return SetupProperty(Create());
 }
 
-static UProperty* CreatePropertyFromDecl(Local<Context> context, FIsolateHelper& I, UObject* Outer, Handle<Value> PropertyDecl)
+static UProperty* CreatePropertyFromDecl(Local<Context> context, FIsolateHelper& I, UObject* Outer, Local<Value> PropertyDecl)
 {
 	auto Decl = PropertyDecl->ToObject(context).ToLocalChecked();
 	auto Name = Decl->Get(context, I.Keyword("Name")).ToLocalChecked();
@@ -992,7 +992,7 @@ public:
 			Class->ClassFlags |= (ParentClass->ClassFlags & (CLASS_Inherit | CLASS_ScriptInherit | CLASS_CompiledFromBlueprint));
 			Class->ClassCastFlags |= ParentClass->ClassCastFlags;
 
-			auto AddFunction = [&](FName NewFunctionName, Handle<Value> TheFunction) -> bool {
+			auto AddFunction = [&](FName NewFunctionName, Local<Value> TheFunction) -> bool {
 				UFunction* ParentFunction = ParentClass->FindFunctionByName(NewFunctionName);
 
 				UJavascriptGeneratedFunction* Function{ nullptr };
@@ -1063,13 +1063,13 @@ public:
 						SetFunctionFlags(Function, StringArrayFromV8(isolate, Decorators));
 					}
 
-					auto InitializeProperties = [&](UFunction* Function, Handle<Value> Signature) {
+					auto InitializeProperties = [&](UFunction* Function, Local<Value> Signature) {
 						UField** Storage = &Function->Children;
 						UProperty** PropertyStorage = &Function->PropertyLink;
 
 						if (!Signature.IsEmpty() && Signature->IsArray())
 						{
-							auto arr = Handle<Array>::Cast(Signature);
+							auto arr = Local<Array>::Cast(Signature);
 							auto len = arr->Length();
 
 							for (decltype(len) Index = 0; Index < len; ++Index)
@@ -1161,7 +1161,7 @@ public:
 			auto PropertyDecls = Opts->Get(I.Keyword("Properties"));
 			if (!PropertyDecls.IsEmpty() && PropertyDecls->IsArray())
 			{
-				auto arr = Handle<Array>::Cast(PropertyDecls);
+				auto arr = Local<Array>::Cast(PropertyDecls);
 				auto len = arr->Length();
 
 				for (decltype(len) Index = 0; Index < len; ++Index)
@@ -1185,7 +1185,7 @@ public:
 			}
 
 			auto Functions = Opts->Get(I.Keyword("Functions"));
-			TMap<FString,Handle<Value>> Others;
+			TMap<FString,Local<Value>> Others;
 			if (!Functions.IsEmpty() && Functions->IsObject())
 			{
 				auto FuncMap = Functions->ToObject(context).ToLocalChecked();
@@ -1271,7 +1271,7 @@ public:
 			auto PropertyDecls = Opts->Get(I.Keyword("Properties"));
 			if (!PropertyDecls.IsEmpty() && PropertyDecls->IsArray())
 			{
-				auto arr = Handle<Array>::Cast(PropertyDecls);
+				auto arr = Local<Array>::Cast(PropertyDecls);
 				auto len = arr->Length();
 
 				for (decltype(len) Index = 0; Index < len; ++Index)
@@ -1302,7 +1302,7 @@ public:
 			auto ProxyFunctions = prev_v8_template->ToObject(context).ToLocalChecked()->Get(context, I.Keyword("proxy")).ToLocalChecked();
 
 			auto Functions = Opts->Get(I.Keyword("Functions"));
-			TMap<FString, Handle<Value>> Others;
+			TMap<FString, Local<Value>> Others;
 			if (!Functions.IsEmpty() && Functions->IsObject())
 			{
 				auto FuncMap = Functions->ToObject(context).ToLocalChecked();
@@ -1380,7 +1380,7 @@ public:
 			auto PropertyDecls = Opts->Get(context, I.Keyword("Properties")).ToLocalChecked();
 			if (!PropertyDecls.IsEmpty() && PropertyDecls->IsArray())
 			{
-				auto arr = Handle<Array>::Cast(PropertyDecls);
+				auto arr = Local<Array>::Cast(PropertyDecls);
 				auto len = arr->Length();
 
 				for (decltype(len) Index = 0; Index < len; ++Index)
@@ -1428,7 +1428,7 @@ public:
 			auto PropertyDecls = Opts->Get(context, I.Keyword("Properties")).ToLocalChecked();
 			if (!PropertyDecls.IsEmpty() && PropertyDecls->IsArray())
 			{
-				auto arr = Handle<Array>::Cast(PropertyDecls);
+				auto arr = Local<Array>::Cast(PropertyDecls);
 				auto len = arr->Length();
 
 				for (decltype(len) Index = 0; Index < len; ++Index)
@@ -1803,7 +1803,7 @@ public:
 					{
 						auto Source = reinterpret_cast<FJavascriptRawAccess*>(Memory);
 
-						Handle<Value> argv[1];
+						Local<Value> argv[1];
 
 						auto Name = StringFromV8(isolate, info[1]);
 
@@ -1842,7 +1842,7 @@ public:
 					{
 						auto Source = reinterpret_cast<FJavascriptMemoryStruct*>(Memory);
 
-						Handle<Value> argv[1];
+						Local<Value> argv[1];
 
 						auto Dimension = Source->GetDimension();
 						auto Indices = (int32*)FMemory_Alloca(sizeof(int32) * Dimension);
@@ -1875,7 +1875,7 @@ public:
 					{
 						auto Source = reinterpret_cast<FJavascriptRawAccess*>(Memory);
 
-						Handle<Value> argv[1];
+						Local<Value> argv[1];
 
 						auto ProxyStruct = Source->GetScriptStruct(0);
 						auto Proxy = Source->GetData(0);
@@ -2103,7 +2103,7 @@ public:
 									auto ctx = context();
 									Context::Scope context_scope(ctx);
 
-									v8::Handle<Value> args[] = { DefaultValue };
+									v8::Local<Value> args[] = { DefaultValue };
 									auto ret = Packer->Call(ctx, Packer, 1, args).ToLocalChecked();
 									auto Ret = StringFromV8(isolate(), ret);
 									ParameterWithValue = FString::Printf(TEXT("%s = %s"), *Parameter, *Ret);
@@ -2335,7 +2335,7 @@ public:
 		{
 			auto function = func.As<Function>();
 
-			Handle<Value> argv[1];
+			Local<Value> argv[1];
 
 			argv[0] = V8_String(_isolate, Exception);
 

@@ -178,28 +178,28 @@ public:
 
 				auto ProxyObject = proxy->ToObject(context).ToLocalChecked();
 				{					
-					auto clear_fn = Handle<Function>::Cast(ProxyObject->Get(context, I.Keyword("Clear")).ToLocalChecked());
+					auto clear_fn = Local<Function>::Cast(ProxyObject->Get(context, I.Keyword("Clear")).ToLocalChecked());
 					(void)clear_fn->Call(context, ProxyObject, 0, nullptr);
 				}
 
-				auto add_fn = Handle<Function>::Cast(ProxyObject->Get(context, I.Keyword("Add")).ToLocalChecked());
+				auto add_fn = Local<Function>::Cast(ProxyObject->Get(context, I.Keyword("Add")).ToLocalChecked());
 
 				// "whole array" can be set
 				if (value->IsArray())
 				{
-					auto arr = Handle<Array>::Cast(value);
+					auto arr = Local<Array>::Cast(value);
 					auto Length = arr->Length();					
 					for (decltype(Length) Index = 0; Index < Length; ++Index)
 					{						
 						auto elem = arr->Get(Index);
-						Handle<Value> args[] = {elem};
+						Local<Value> args[] = {elem};
 						(void)add_fn->Call(context, ProxyObject, 1, args);
 					}
 				}
 				// only one delegate
 				else if (!value->IsNull())
 				{					
-					Handle<Value> args[] = {value};
+					Local<Value> args[] = {value};
 					(void)add_fn->Call(context, ProxyObject, 1, args);
 				}
 			};
@@ -350,7 +350,7 @@ public:
 		Isolate::Scope isolate_scope(isolate_);
 		HandleScope handle_scope(isolate_);
 
-		Handle<Context> context = Context::New(isolate_);
+		Local<Context> context = Context::New(isolate_);
 		Context::Scope ContextScope(context);
 
 		// Create a new object template
@@ -727,7 +727,7 @@ public:
 		}
 	}	
 
-	void InternalWriteProperty(UProperty* Property, uint8* Buffer, Handle<Value> Value, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags, int Offset)
+	void InternalWriteProperty(UProperty* Property, uint8* Buffer, Local<Value> Value, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags, int Offset)
 	{
 		FIsolateHelper I(isolate_);
 
@@ -908,7 +908,7 @@ public:
 		{
 			if (Value->IsArray())
 			{
-				auto arr = Handle<Array>::Cast(Value);
+				auto arr = Local<Array>::Cast(Value);
 				auto len = arr->Length();
 
 				FScriptArrayHelper_InContainer helper(p, Buffer, Offset);
@@ -1006,7 +1006,7 @@ public:
 		{
 			if (Value->IsArray())
 			{
-				auto arr = Handle<Array>::Cast(Value);
+				auto arr = Local<Array>::Cast(Value);
 				auto len = arr->Length();
 
 				FScriptSetHelper_InContainer SetHelper(p, Buffer, Offset);
@@ -1370,7 +1370,7 @@ public:
 
 				GCurrentContents = arr->GetContents();
 
-				Handle<Value> argv[1];
+				Local<Value> argv[1];
 				argv[0] = arr;
 				(void)function->Call(isolate->GetCurrentContext(), info.This(), 1, argv);
 
@@ -1658,7 +1658,7 @@ public:
 		return handle_scope.Escape(Undefined(isolate));
 	}
 		
-	void ExportFunction(Handle<FunctionTemplate> Template, UFunction* FunctionToExport)
+	void ExportFunction(Local<FunctionTemplate> Template, UFunction* FunctionToExport)
 	{
 		FIsolateHelper I(isolate_);
 
@@ -1714,7 +1714,7 @@ public:
 		Template->PrototypeTemplate()->Set(function_name, function);
 	}
 
-	void ExportBlueprintLibraryFunction(Handle<FunctionTemplate> Template, UFunction* FunctionToExport)
+	void ExportBlueprintLibraryFunction(Local<FunctionTemplate> Template, UFunction* FunctionToExport)
 	{
 		FIsolateHelper I(isolate_);
 
@@ -1759,7 +1759,7 @@ public:
 		Template->PrototypeTemplate()->Set(function_name, function);		
 	}
 
-	void ExportBlueprintLibraryFactoryFunction(Handle<FunctionTemplate> Template, UFunction* FunctionToExport)
+	void ExportBlueprintLibraryFactoryFunction(Local<FunctionTemplate> Template, UFunction* FunctionToExport)
 	{
 		FIsolateHelper I(isolate_);
 
@@ -1816,7 +1816,7 @@ public:
 	}
 
 	template <typename PropertyAccessors>
-	void ExportProperty(Handle<FunctionTemplate> Template, UProperty* PropertyToExport, int32 PropertyIndex) 
+	void ExportProperty(Local<FunctionTemplate> Template, UProperty* PropertyToExport, int32 PropertyIndex) 
 	{
 		FIsolateHelper I(isolate_);
 
@@ -2244,7 +2244,7 @@ public:
 						{
 							if (auto q = Cast<UObjectPropertyBase>(p->Inner))
 							{
-								auto arr = Handle<Array>::Cast(value);
+								auto arr = Local<Array>::Cast(value);
 								auto len = arr->Length();
 
 								auto out_arr = Array::New(isolate, len);
@@ -2337,7 +2337,7 @@ public:
 						{
 							if (auto q = Cast<UObjectPropertyBase>(p->Inner))
 							{
-								auto arr = Handle<Array>::Cast(value);
+								auto arr = Local<Array>::Cast(value);
 								auto len = arr->Length();
 
 								auto out_arr = Array::New(isolate, len);
@@ -2399,7 +2399,7 @@ public:
 					//if (FV8Config::CanExportProperty(Class, Property) && MatchPropertyName(Property,PropertyNameToAccess))
 					if (FV8Config::CanExportProperty(Class, Property))
 					{
-						Handle<Value> argv[1];
+						Local<Value> argv[1];
 
 						argv[0] = ArrayBuffer::New(isolate, helper.GetRawPtr(), helper.Num() * p->Inner->GetSize());
 
@@ -2790,7 +2790,7 @@ public:
 		auto v8_struct = ExportStruct(Struct);
 		auto arg = I.External(Buffer);
 		auto arg2 = I.External((void*)&Owner);
-		Handle<Value> args[] = { arg, arg2 };
+		Local<Value> args[] = { arg, arg2 };
 
 		auto obj = v8_struct->GetFunction(isolate_->GetCurrentContext()).ToLocalChecked()->NewInstance(isolate_->GetCurrentContext(), 2, args);
 
@@ -2815,7 +2815,7 @@ public:
 
 			auto v8_class = ExportUClass(Object->GetClass());
 			auto arg = I.External(Object);
-			Handle<Value> args[] = { arg };
+			Local<Value> args[] = { arg };
 
 			value = v8_class->GetFunction(isolate_->GetCurrentContext()).ToLocalChecked()->NewInstance(isolate_->GetCurrentContext(), 1, args).ToLocalChecked();
 
@@ -2879,7 +2879,7 @@ public:
 
 				auto v8_class = ExportUClass(Class);
 				auto arg = I.External(Object);
-				Handle<Value> args[] = { arg };
+				Local<Value> args[] = { arg };
 
 				value = v8_class->GetFunction(isolate_->GetCurrentContext()).ToLocalChecked()->NewInstance(isolate_->GetCurrentContext(), 1, args).ToLocalChecked();
 			}
@@ -3016,7 +3016,7 @@ Local<Value> FJavascriptIsolate::ReadProperty(Isolate* isolate, UProperty* Prope
 	return ArrayValue;
 }
 
-void FJavascriptIsolate::WriteProperty(Isolate* isolate, UProperty* Property, uint8* Buffer, Handle<Value> Value, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags)
+void FJavascriptIsolate::WriteProperty(Isolate* isolate, UProperty* Property, uint8* Buffer, Local<Value> Value, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags)
 {
 	if (Value->IsArray() && Property->ArrayDim > 1)
 	{
@@ -3127,7 +3127,7 @@ void FJavascriptFunction::Execute(UScriptStruct* Struct, void* Buffer)
 			Context::Scope context_scope(context);
 
 			auto arg = FJavascriptIsolateImplementation::GetSelf(Handle->isolate)->ExportStructInstance(Struct, (uint8*)Buffer, FNoPropertyOwner());
-			v8::Handle<Value> args[] = { arg };
+			v8::Local<Value> args[] = { arg };
 			(void)function->Call(context, function, 1, args);
 		}
 	}
