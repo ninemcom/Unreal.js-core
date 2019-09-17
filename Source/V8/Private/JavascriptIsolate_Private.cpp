@@ -100,6 +100,8 @@ void FArrayBufferAccessor::Discard()
 	GCurrentContents = v8::ArrayBuffer::Contents();
 }
 
+const FName FJavascriptIsolateConstant::MD_BitmaskEnum(TEXT("BitmaskEnum"));
+
 class FJavascriptIsolateImplementation : public FJavascriptIsolate
 {
 public:
@@ -191,8 +193,9 @@ public:
 					auto Length = arr->Length();					
 					for (decltype(Length) Index = 0; Index < Length; ++Index)
 					{						
-						auto elem = arr->Get(context, Index).ToLocalChecked();
-						Local<Value> args[] = {elem};
+						auto elem = arr->Get(context, Index);
+						if (elem.IsEmpty()) continue;
+						Handle<Value> args[] = { elem.ToLocalChecked() };
 						(void)add_fn->Call(context, ProxyObject, 1, args);
 					}
 				}
@@ -506,7 +509,37 @@ public:
 			return Undefined(isolate_);
 		}
 
-		if (auto p = Cast<UIntProperty>(Property))
+#if WITH_EDITOR
+		const FString& BitmaskEnumName = Property->GetMetaData(FJavascriptIsolateConstant::MD_BitmaskEnum);
+		if (!BitmaskEnumName.IsEmpty())
+		{
+			if (auto p = Cast<UNumericProperty>(Property))
+			{
+				if (p->IsInteger())
+				{
+					const UEnum* BitmaskEnum = FindObject<UEnum>(ANY_PACKAGE, *BitmaskEnumName);
+					int32 EnumCount = BitmaskEnum->NumEnums();
+
+					auto Value = p->GetSignedIntPropertyValue(Property->ContainerPtrToValuePtr<int64>(Buffer));
+
+					TArray<FString> EnumStrings;
+
+					for (int32 i = 0; i < EnumCount-1; ++i)
+					{
+						if (Value & BitmaskEnum->GetValueByIndex(i))
+						{
+							EnumStrings.Add(BitmaskEnum->GetNameStringByIndex(i));
+						}
+					}
+
+					return I.Keyword(FString::Join(EnumStrings, TEXT(",")));
+				}
+			}
+		}
+#else
+		if (false) {}
+#endif 
+		else if (auto p = Cast<UIntProperty>(Property))
 		{
 			return Int32::New(isolate_, p->GetPropertyValue_InContainer(Buffer, Offset));
 		}
@@ -657,11 +690,12 @@ public:
 			auto Out = Array::New(isolate_);
 
 			auto Num = SetHelper.Num();
+			auto context = isolate_->GetCurrentContext();
 			for (int Index = 0; Index < Num; ++Index)
 			{
 				auto PairPtr = SetHelper.GetElementPtr(Index);
 
-				(void)Out->Set(isolate_->GetCurrentContext(), Index, ReadProperty(isolate_, p->ElementProp, SetHelper.GetElementPtr(Index), Owner, Flags));
+				(void)Out->Set(context, Index, ReadProperty(isolate_, p->ElementProp, SetHelper.GetElementPtr(Index), Owner, Flags));
 			}
 
 			return Out;
@@ -673,25 +707,24 @@ public:
 			auto Out = Object::New(isolate_);
 
 			auto Num = MapHelper.Num();
+			auto context = isolate_->GetCurrentContext();
 			for (int Index = 0; Index < Num; ++Index)
 			{
 				uint8* PairPtr = MapHelper.GetPairPtr(Index);
 #if ENGINE_MINOR_VERSION < 22
-				auto Key = InternalReadProperty(p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Owner, Flags);
+				auto Key = InternalReadProperty(p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Owner, Flags, 0);
 #else
-				auto Key = ReadProperty(isolate_, p->KeyProp, PairPtr, Owner, Flags);
+				auto Key = InternalReadProperty(p->KeyProp, PairPtr, Owner, Flags, 0);
 #endif
-				auto Value = ReadProperty(isolate_, p->ValueProp, PairPtr, Owner, Flags);
+				auto Value = InternalReadProperty(p->ValueProp, PairPtr, Owner, Flags, 0);
 
-				(void)Out->Set(isolate_->GetCurrentContext(), Key, Value);
+				Out->Set(context, Key, Value);
 			}
 
 			return Out;
 		}
-		else
-		{
-			return I.Keyword("<Unsupported type>");
-		}
+
+		return I.Keyword("<Unsupported type>");
 	}
 
 	void ReadOffStruct(Local<Object> v8_obj, UStruct* Struct, uint8* struct_buffer)
@@ -710,15 +743,19 @@ public:
 
 		Struct->InitializeStruct(struct_buffer);
 		
+		auto context = isolate_->GetCurrentContext();
 		for (TFieldIterator<UProperty> PropertyIt(Struct, EFieldIteratorFlags::IncludeSuper); PropertyIt && len; ++PropertyIt)
 		{
 			auto Property = *PropertyIt;
-			//auto PropertyName = PropertyNameToString(Property, !bIsEditor);
-			FString PropertyName = Property->GetName();
+			auto PropertyName = PropertyNameToString(Property, !bIsEditor);
 
 			auto name = I.Keyword(PropertyName);
-			Local<Value> value;
-			if (v8_obj->Get(isolate_->GetCurrentContext(), name).ToLocal(&value) && !value->IsUndefined())
+			auto maybe_value = v8_obj->Get(context, name);
+
+			if (maybe_value.IsEmpty()) continue;
+			auto value = maybe_value.ToLocalChecked();
+
+			if (!value->IsUndefined())
 			{
 				len--;
 				WriteProperty(isolate_, Property, struct_buffer, value, FNoPropertyOwner(), FPropertyAccessorFlags());
@@ -739,7 +776,33 @@ public:
 
 		if (Value.IsEmpty() || Value->IsUndefined()) return;
 
-		if (auto p = Cast<UIntProperty>(Property))
+#if WITH_EDITOR
+		const FString& BitmaskEnumName = Property->GetMetaData(FJavascriptIsolateConstant::MD_BitmaskEnum);
+		if (!BitmaskEnumName.IsEmpty())
+		{
+			if (auto p = Cast<UNumericProperty>(Property))
+			{
+				if (p->IsInteger())
+				{
+					const UEnum* BitmaskEnum = FindObject<UEnum>(ANY_PACKAGE, *BitmaskEnumName);
+					auto Str = StringFromV8(isolate_, Value);
+					TArray<FString> EnumStrings;
+					Str.ParseIntoArray(EnumStrings, TEXT(","));
+					int64 EnumValue = 0;
+
+					for (int32 i = 0; i < EnumStrings.Num(); ++i)
+					{
+						EnumValue |= BitmaskEnum->GetValueByNameString(*EnumStrings[i], EGetByNameFlags::None);
+					}
+
+					p->SetIntPropertyValue(Property->ContainerPtrToValuePtr<int64>(Buffer), EnumValue);
+				}
+			}
+		}
+#else
+		if (false) {}
+#endif
+		else if (auto p = Cast<UIntProperty>(Property))
 		{
 			p->SetPropertyValue_InContainer(Buffer, Value->Int32Value(isolate_->GetCurrentContext()).ToChecked(), Offset);
 		}
@@ -924,9 +987,14 @@ public:
 					helper.RemoveValues(len, CurSize - len);
 				}
 
+				auto context = isolate_->GetCurrentContext();
 				for (decltype(len) Index = 0; Index < len; ++Index)
 				{
-					WriteProperty(isolate_, p->Inner, helper.GetRawPtr(Index), arr->Get(context, Index).ToLocalChecked(), Owner, Flags);
+					auto maybe_value = arr->Get(context, Index);
+					if (!maybe_value.IsEmpty())
+					{
+						WriteProperty(isolate_, p->Inner, helper.GetRawPtr(Index), maybe_value.ToLocalChecked(), Owner, Flags);
+					}
 				}
 			}
 			else
@@ -1012,11 +1080,16 @@ public:
 				FScriptSetHelper_InContainer SetHelper(p, Buffer, Offset);
 
 				auto Num = SetHelper.Num();
+				auto context = isolate_->GetCurrentContext();
 				for (int Index = 0; Index < Num; ++Index)
 				{
 					const int32 ElementIndex = SetHelper.AddDefaultValue_Invalid_NeedsRehash();
 					uint8* ElementPtr = SetHelper.GetElementPtr(Index);
-					WriteProperty(isolate_, p->ElementProp, ElementPtr, arr->Get(context, Index).ToLocalChecked(), Owner, Flags);
+					auto maybe_value = arr->Get(context, Index);
+					if (!maybe_value.IsEmpty())
+					{
+						WriteProperty(isolate_, p->ElementProp, ElementPtr, maybe_value.ToLocalChecked(), Owner, Flags);
+					}
 				}
 
 				SetHelper.Rehash();
@@ -1040,11 +1113,11 @@ public:
 					auto ElementIndex = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
 					uint8* PairPtr = MapHelper.GetPairPtr(ElementIndex);
 #if ENGINE_MINOR_VERSION < 22
-					WriteProperty(isolate_, p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Key, Owner, Flags);
+					InternalWriteProperty(p->KeyProp, PairPtr + p->MapLayout.KeyOffset, Key, Owner, Flags, 0);
 #else
-					WriteProperty(isolate_, p->KeyProp, PairPtr, Key, Owner, Flags);
+					InternalWriteProperty(p->KeyProp, PairPtr, Key, Owner, Flags, 0);
 #endif
-					WriteProperty(isolate_, p->ValueProp, PairPtr, Value, Owner, Flags);
+					InternalWriteProperty(p->ValueProp, PairPtr, Value, Owner, Flags, 0);
 				}
 
 				MapHelper.Rehash();
@@ -1346,12 +1419,13 @@ public:
 			
 			if (info.Length() == 1)
 			{
-				auto Source = Cast<UJavascriptMemoryObject>(UObjectFromV8(isolate->GetCurrentContext(), info[0]));
+				auto context = isolate->GetCurrentContext();
+				auto Source = Cast<UJavascriptMemoryObject>(UObjectFromV8(context, info[0]));
 
 				if (Source)
 				{
-					auto ab = ArrayBuffer::New(info.GetIsolate(), Source->GetMemory(), Source->GetSize());
-					(void)ab->Set(isolate->GetCurrentContext(), I.Keyword("$source"), info[0]);
+					auto ab = ArrayBuffer::New(isolate, Source->GetMemory(), Source->GetSize());
+					(void)ab->Set(context, I.Keyword("$source"), info[0]);
 					info.GetReturnValue().Set(ab);
 					return;
 				}
@@ -1602,6 +1676,7 @@ public:
 			// Allocate an object to pass return values within
 			auto OutParameters = Object::New(isolate);
 
+			auto context = isolate->GetCurrentContext();
 			// Iterate over parameters again
 			for (TFieldIterator<UProperty> It(Function); It; ++It, ArgIndex++)
 			{
@@ -1617,7 +1692,7 @@ public:
 					if (!value.IsEmpty())
 					{
 						(void)OutParameters->Set(
-							isolate->GetCurrentContext(),
+							context,
 							// "$"
 							I.Keyword("$"),
 							// property value
@@ -1632,7 +1707,7 @@ public:
 					if (!value.IsEmpty())
 					{
 						(void)OutParameters->Set(
-							isolate->GetCurrentContext(),
+							context,
 							// parameter name
 							I.Keyword(Param->GetName()),
 							// property value
@@ -1814,7 +1889,11 @@ public:
 
 	virtual void PublicExportStruct(UScriptStruct* StructToExport) override
 	{
-		ScriptStructToFunctionTemplateMap.Remove(StructToExport);
+		v8::UniquePersistent<v8::FunctionTemplate> Template;
+		if (ScriptStructToFunctionTemplateMap.RemoveAndCopyValue(StructToExport, Template))
+		{
+			Template.Reset();
+		}
 
 		ExportStruct(StructToExport);
 	}
@@ -1850,8 +1929,7 @@ public:
 			PropertyAccessors::Set(isolate, info.This(), Property, value, Flags);			
 		};
 		
-		//auto Name = PropertyNameToString(PropertyToExport, !bIsEditor);
-		FString Name = PropertyToExport->GetName();
+		auto Name = PropertyNameToString(PropertyToExport, !bIsEditor);
 		Template->PrototypeTemplate()->SetAccessor(
 			I.Keyword(Name),
 			Getter,
@@ -1986,7 +2064,11 @@ public:
 			bool bTransient = info.Length() > 1 ? info[1]->BooleanValue(isolate) : false;
 			bool bIsRequired = info.Length() > 2 ? info[2]->BooleanValue(isolate) : true;
 			bool bIsAbstract = info.Length() > 3 ? info[3]->BooleanValue(isolate) : false;
+#if ENGINE_MINOR_VERSION < 23
 			auto Object = ObjectInitializer->CreateDefaultSubobject(ObjectInitializer->GetObj(), *Name, ReturnType, ReturnType, bIsRequired, bIsAbstract, bTransient);
+#else
+			auto Object = ObjectInitializer->CreateDefaultSubobject(ObjectInitializer->GetObj(), *Name, ReturnType, ReturnType, bIsRequired, bTransient);
+#endif
 
 			info.GetReturnValue().Set(Context->ExportObject(Object));
 		};
@@ -2134,6 +2216,11 @@ public:
 			auto isolate = info.GetIsolate();
 
 			auto self = info.This();
+
+			if (self->IsUndefined())
+			{
+				return;
+			}
 			auto out = Object::New(isolate);
 
 			auto Instance = FStructMemoryInstance::FromV8(isolate->GetCurrentContext(), self);
@@ -2213,7 +2300,7 @@ public:
 
 					if (FV8Config::CanExportProperty(Class, Property))
 					{
-						FString PropertyName = Property->GetName();
+						auto PropertyName = PropertyNameToString(Property, false);
 
 						auto name = I.Keyword(PropertyName);
 						auto value = PropertyAccessor::Get(isolate, self, Property);
@@ -2239,11 +2326,11 @@ public:
 								value = I.Keyword("null");
 							}
 
-							(void)out->Set(context, name, value);
+							out->Set(context, name, value);
 						}
 						else if (auto p = Cast<UObjectPropertyBase>(Property))
 						{
-							(void)out->Set(context, name, Object_toJSON(value));
+							out->Set(context, name, Object_toJSON(value));
 						}
 						else if (auto p = Cast<UArrayProperty>(Property))
 						{
@@ -2253,22 +2340,25 @@ public:
 								auto len = arr->Length();
 
 								auto out_arr = Array::New(isolate, len);
-								(void)out->Set(context, name, out_arr);
+								out->Set(context, name, out_arr);
 
 								for (decltype(len) Index = 0; Index < len; ++Index)
 								{
-									auto Elem = arr->Get(context, Index).ToLocalChecked();
-									(void)out_arr->Set(context, Index, Object_toJSON(Elem));
+									auto maybe_value = arr->Get(context, Index);
+									if (!maybe_value.IsEmpty())
+									{
+										out_arr->Set(context, Index, Object_toJSON(maybe_value.ToLocalChecked()));
+									}
 								}
 							}
 							else
 							{
-								(void)out->Set(context, name, value);
+								out->Set(context, name, value);
 							}
 						}
 						else
 						{
-							(void)out->Set(context, name, value);
+							out->Set(context, name, value);
 						}
 					}
 				}
@@ -2334,11 +2424,11 @@ public:
 								value = I.Keyword("null");
 							}
 
-							(void)out->Set(context, name, value);
+							out->Set(context, name, value);
 						}
 						else if (auto p = Cast<UObjectPropertyBase>(Property))
 						{
-							(void)out->Set(context, name, Object_toJSON(value));
+							out->Set(context, name, Object_toJSON(value));
 						}
 						else if (auto p = Cast<UArrayProperty>(Property))
 						{
@@ -2348,22 +2438,25 @@ public:
 								auto len = arr->Length();
 
 								auto out_arr = Array::New(isolate, len);
-								(void)out->Set(context, name, out_arr);
+								out->Set(context, name, out_arr);
 
 								for (decltype(len) Index = 0; Index < len; ++Index)
 								{
-									auto Elem = arr->Get(context, Index).ToLocalChecked();
-									(void)out_arr->Set(context, Index, Object_toJSON(Elem));
+									auto maybe_value = arr->Get(context, Index);
+									if (!maybe_value.IsEmpty())
+									{
+										out_arr->Set(context, Index, Object_toJSON(maybe_value.ToLocalChecked()));
+									}
 								}
 							}
 							else
 							{
-								(void)out->Set(context, name, value);
+								out->Set(context, name, value);
 							}
 						}
 						else
 						{
-							(void)out->Set(context, name, value);
+							out->Set(context, name, value);
 						}
 					}
 				}
@@ -2404,8 +2497,7 @@ public:
 				{
 					FScriptArrayHelper_InContainer helper(p, Instance);
 
-					//if (FV8Config::CanExportProperty(Class, Property) && MatchPropertyName(Property,PropertyNameToAccess))
-					if (FV8Config::CanExportProperty(Class, Property))
+					if (FV8Config::CanExportProperty(Class, Property) && MatchPropertyName(Property,PropertyNameToAccess))
 					{
 						Local<Value> argv[1];
 
@@ -2742,15 +2834,15 @@ public:
 	{
 		FIsolateHelper I(isolate_);		
 
+		auto EnumLength = Enum->NumEnums();
+		auto arr = Array::New(isolate_, EnumLength);
 		auto context = isolate_->GetCurrentContext();
-		auto MaxEnumValue = Enum->GetMaxEnumValue();
-		auto arr = Array::New(isolate_, MaxEnumValue);
 
-		for (decltype(MaxEnumValue) Index = 0; Index < MaxEnumValue; ++Index)
+		for (decltype(EnumLength) Index = 0; Index < EnumLength; ++Index)
 		{
 			auto value = I.Keyword(Enum->GetNameStringByIndex(Index));
-			(void)arr->Set(context, Index, value);
-			(void)arr->Set(context, value, value);
+			arr->Set(context, Index, value);
+			arr->Set(context, value, value);
 		}
 
 		// public name
@@ -2801,7 +2893,12 @@ public:
 		auto arg2 = I.External((void*)&Owner);
 		Local<Value> args[] = { arg, arg2 };
 
-		auto obj = v8_struct->GetFunction(isolate_->GetCurrentContext()).ToLocalChecked()->NewInstance(isolate_->GetCurrentContext(), 2, args);
+		auto maybe_func = v8_struct->GetFunction(isolate_->GetCurrentContext());
+
+		if (maybe_func.IsEmpty())
+			return Undefined(isolate_);
+
+		auto obj = maybe_func.ToLocalChecked()->NewInstance(isolate_->GetCurrentContext(), 2, args);
 
 		if (obj.IsEmpty())
 			return Undefined(isolate_);
@@ -2820,15 +2917,19 @@ public:
 		auto ObjectPtr = GetContext()->ObjectToObjectMap.Find(Object);
 		if (ObjectPtr == nullptr)
 		{
-			Local<Value> value;
-
 			auto v8_class = ExportUClass(Object->GetClass());
 			auto arg = I.External(Object);
 			Local<Value> args[] = { arg };
 
-			value = v8_class->GetFunction(isolate_->GetCurrentContext()).ToLocalChecked()->NewInstance(isolate_->GetCurrentContext(), 1, args).ToLocalChecked();
+			auto maybe_func = v8_class->GetFunction(isolate_->GetCurrentContext());
+			if (maybe_func.IsEmpty())
+				return Undefined(isolate_);
 
-			return value;
+			auto maybe_value = maybe_func.ToLocalChecked()->NewInstance(isolate_->GetCurrentContext(), 1, args);
+			if (maybe_value.IsEmpty())
+				return Undefined(isolate_);
+
+			return maybe_value.ToLocalChecked();
 		}
 		else
 		{
@@ -2945,7 +3046,11 @@ public:
 		auto Context = isolate_->GetCurrentContext();
 		if (!Context.IsEmpty())
 		{
-			(void)Context->Global()->Set(isolate_->GetCurrentContext(), name, Template->GetFunction(Context).ToLocalChecked());
+			auto maybe_func = Template->GetFunction(Context);
+			if (!maybe_func.IsEmpty())
+			{
+				Context->Global()->Set(Context, name, maybe_func.ToLocalChecked());
+			}
 		}
 
 		// Register this class to the global template so that any other contexts which will be created later have this function template.
@@ -2982,17 +3087,29 @@ public:
 	void OnGarbageCollectedByV8(FJavascriptContext* Context, FStructMemoryInstance* Memory)
 	{
 		// We should keep ourselves clean
-		Context->MemoryToObjectMap.Remove(Memory->AsShared());
+		v8::UniquePersistent<v8::Value> Persistant;
+		if (Context->MemoryToObjectMap.RemoveAndCopyValue(Memory->AsShared(), Persistant))
+		{
+			Persistant.Reset();
+		}
 	}
 
 	void OnGarbageCollectedByV8(FJavascriptContext* Context, UObject* Object)
 	{
 		if (auto klass = Cast<UClass>(Object))
 		{
-			ClassToFunctionTemplateMap.Remove(klass);
+			v8::UniquePersistent<v8::FunctionTemplate> Template;
+			if (ClassToFunctionTemplateMap.RemoveAndCopyValue(klass, Template))
+			{
+				Template.Reset();
+			}
 		}
 
-		Context->ObjectToObjectMap.Remove(Object);		
+		v8::UniquePersistent<v8::Value> Persistant;
+		if (Context->ObjectToObjectMap.RemoveAndCopyValue(Object, Persistant))
+		{
+			Persistant.Reset();
+		}
 	}	
 
 	static FJavascriptIsolateImplementation* GetSelf(Isolate* isolate)

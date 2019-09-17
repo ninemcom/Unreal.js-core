@@ -14,7 +14,6 @@ UJavascriptComponent::UJavascriptComponent(const FObjectInitializer& ObjectIniti
 : Super(ObjectInitializer)
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.TickInterval = 0.03f;
 	bTickInEditor = false;
 	bAutoActivate = true;
 	bWantsInitializeComponent = true;
@@ -81,7 +80,7 @@ void UJavascriptComponent::Deactivate()
 
 void UJavascriptComponent::BeginDestroy()
 {
-	if (!IsRunningCommandlet())
+	if (IsValid(GEngine) && !IsRunningCommandlet())
 	{
 		auto* StaticGameData = Cast<UJavascriptStaticCache>(GEngine->GameSingleton);
 		if (StaticGameData)
