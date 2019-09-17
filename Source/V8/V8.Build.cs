@@ -36,21 +36,10 @@ public class V8 : ModuleRules
     public V8(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-        if (Target.Platform == UnrealTargetPlatform.IOS || Target.Platform == UnrealTargetPlatform.Android)
+        PrivateIncludePaths.AddRange(new string[]
         {
-            PrivateIncludePaths.AddRange(new string[]
-            {
-                Path.Combine(ThirdPartyPath, "v8", "include-7.7.310")
-                //Path.Combine(ThirdPartyPath, "v8", "include")
-            });
-        }
-        else
-        {
-            PrivateIncludePaths.AddRange(new string[]
-            {
-                Path.Combine(ThirdPartyPath, "v8", "include")
-            });
-        }
+            Path.Combine(ThirdPartyPath, "v8", "include")
+        });
 
         PublicDependencyModuleNames.AddRange(new string[] 
         { 
@@ -136,32 +125,7 @@ public class V8 : ModuleRules
                 LibrariesPath = Path.Combine(LibrariesPath, "Release");
             }
 
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_init.lib"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_initializers.lib"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_libbase.lib"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_libplatform.lib"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_nosnapshot.lib"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_libsampler.lib"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "torque_base.lib"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "torque_generated_initializers.lib"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "inspector.lib"));
-
-            if (ShouldLink_lib_v8_compiler)
-            {
-                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_compiler.lib"));
-                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_base_without_compiler_0.lib"));
-                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_base_without_compiler_1.lib"));
-                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "inspector_string_conversions.lib"));
-                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "torque_generated_definitions.lib"));
-                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "encoding.lib"));
-                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "bindings.lib"));
-            }
-            else
-            {
-                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_base_0.lib"));
-                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_base_1.lib"));
-            }
-
+            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "v8_monolith.lib"));
             PublicDefinitions.Add(string.Format("WITH_V8=1"));
 
             return true;

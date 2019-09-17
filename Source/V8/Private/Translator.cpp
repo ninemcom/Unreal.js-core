@@ -133,8 +133,8 @@ namespace v8
 	FString PropertyNameToString(UProperty* Property, bool bConvertComparisionIndex)
 	{
 		auto Struct = Property->GetOwnerStruct();
-		auto displayName = Property->GetFName();
-		auto name = bConvertComparisionIndex ? FName(displayName.GetComparisonIndex(), displayName.GetComparisonIndex(), displayName.GetNumber()) : displayName;
+		auto name = Property->GetName();
+
 		if (Struct)
 		{
 			if (auto s = Cast<UUserDefinedStruct>(Struct))
@@ -142,17 +142,17 @@ namespace v8
 #if ENGINE_MINOR_VERSION > 22
 				return s->GetAuthoredNameForField(Property);
 #else
-				return s->PropertyNameToDisplayName(name);
+				return s->PropertyNameToDisplayName(*name);
 #endif
 			}
 		}
-		return name.ToString();
+		return name;
 	}
 
 	bool MatchPropertyName(UProperty* Property, FName NameToMatch)
 	{
 		auto Struct = Property->GetOwnerStruct();
-		auto name = Property->GetFName();
+		auto name = Property->GetName();
 		if (Struct)
 		{
 			if (auto s = Cast<UUserDefinedStruct>(Struct))
@@ -160,10 +160,10 @@ namespace v8
 #if ENGINE_MINOR_VERSION > 22
 				return s->GetAuthoredNameForField(Property) == NameToMatch.ToString();
 #else
-				return s->PropertyNameToDisplayName(name) == NameToMatch.ToString();
+				return s->PropertyNameToDisplayName(*name) == NameToMatch.ToString();
 #endif
 			}
 		}
-		return name == NameToMatch;
+		return *name == NameToMatch;
 	}
 }
