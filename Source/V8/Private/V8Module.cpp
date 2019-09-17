@@ -39,7 +39,11 @@ static float GV8IdleTaskBudget = 1 / 60.0f;
 UJavascriptSettings::UJavascriptSettings(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+#if PLATFORM_IOS
+	V8Flags = TEXT("--harmony --harmony-shipping --es-staging --expose-gc --jitless");
+#else
 	V8Flags = TEXT("--harmony --harmony-shipping --es-staging --expose-gc");
+#endif
 }
 
 void UJavascriptSettings::Apply() const
@@ -105,7 +109,7 @@ public:
 	virtual void CallDelayedOnForegroundThread(Isolate* isolate, Task* task,
 		double delay_in_seconds)
 	{
-		platform_->CallOnForegroundThread(isolate, task);
+		platform_->CallDelayedOnForegroundThread(isolate, task, delay_in_seconds);
 	}
 
 	virtual void CallIdleOnForegroundThread(Isolate* isolate, IdleTask* task) 
@@ -331,7 +335,8 @@ public:
 
 	virtual void SetFlagsFromString(const FString& V8Flags) override
 	{
-		V8::SetFlagsFromString(TCHAR_TO_ANSI(*V8Flags), strlen(TCHAR_TO_ANSI(*V8Flags)));
+		UE_LOG(Javascript, Log, TEXT("v8 flag: \"%s\""), *V8Flags);
+		V8::SetFlagsFromString(TCHAR_TO_ANSI(*V8Flags), V8Flags.Len());
 	}
 
 	virtual void SetIdleTaskBudget(float BudgetInSeconds) override

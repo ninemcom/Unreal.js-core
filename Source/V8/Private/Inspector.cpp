@@ -176,7 +176,7 @@ namespace {
 
 		virtual void PostReceiveMessage() override
 		{
-			platform_->CallOnForegroundThread(isolate_, new DispatchOnInspectorBackendTask(AsShared()));
+			platform_->GetForegroundTaskRunner(isolate_)->PostTask(std::make_unique<DispatchOnInspectorBackendTask>(AsShared()));
 			isolate_->RequestInterrupt(InterruptCallback, new AgentRef{AsShared()});
 		}
 
@@ -427,8 +427,8 @@ public:
 		FIsolateHelper I(isolate_);
 
 		{
-			auto console = InContext->Global()->Get(I.Keyword("console"));
-			InContext->Global()->Set(I.Keyword("$console"), console);
+			auto console = InContext->Global()->Get(context(), I.Keyword("console")).ToLocalChecked();
+			(void)InContext->Global()->Set(context(), I.Keyword("$console"), console);
 		}
 
 		v8inspector = v8_inspector::V8Inspector::create(isolate_, this);
@@ -493,14 +493,14 @@ public:
 
 			TryCatch try_catch(isolate_);
 
-			auto console = context()->Global()->Get(I.Keyword("console")).As<v8::Object>();
+			auto console = context()->Global()->Get(context(), I.Keyword("console")).ToLocalChecked().As<v8::Object>();
 
 			auto method =
 				Verbosity == ELogVerbosity::Fatal || Verbosity == ELogVerbosity::Error ? I.Keyword("$error") :
 				Verbosity == ELogVerbosity::Warning ? I.Keyword("$warn") :
 				Verbosity == ELogVerbosity::Display ? I.Keyword("info") :
 				I.Keyword("$log");
-			auto function = console->Get(method).As<v8::Function>();
+			auto function = console->Get(context(), method).ToLocalChecked().As<v8::Function>();
 
 			if (Verbosity == ELogVerbosity::Display)
 			{

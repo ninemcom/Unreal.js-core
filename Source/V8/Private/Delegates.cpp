@@ -293,6 +293,7 @@ void ToJSONDelegateProxy(const FunctionCallbackInfo<Value>& info)
 
 	uint32_t Index = 0;			
 	auto arr = Array::New(info.GetIsolate(), payload->DelegateObjects.Num());
+	auto context = info.GetIsolate()->GetCurrentContext();
 	const bool bIsMulticastDelegate = payload->Property->IsA(UMulticastDelegateProperty::StaticClass());
 
 	for (auto DelegateObject : payload->DelegateObjects)
@@ -307,7 +308,7 @@ void ToJSONDelegateProxy(const FunctionCallbackInfo<Value>& info)
 				return;
 			}
 			
-			arr->Set(Index++, function);
+			(void)arr->Set(context, Index++, function);
 		}
 	}
 
@@ -379,12 +380,12 @@ struct FDelegateManager : IDelegateManager
 	virtual Local<Value> GetProxy(Local<Object> This, UObject* Object, UProperty* Property) override
 	{
 		auto cache_id = V8_KeywordString(isolate_, FString::Printf(TEXT("$internal_%s"), *(Property->GetName())));
-		auto cached = This->Get(cache_id);
-		if (cached.IsEmpty() || cached->IsUndefined())
+		Local<Value> cached;
+		if (This->Get(isolate_->GetCurrentContext(), cache_id).ToLocal(&cached) || cached->IsUndefined())
 		{
 			auto created = CreateDelegate(Object, Property);
 
-			This->Set(cache_id, created);
+			(void)This->Set(isolate_->GetCurrentContext(), cache_id, created);
 			return created;
 		}
 		else

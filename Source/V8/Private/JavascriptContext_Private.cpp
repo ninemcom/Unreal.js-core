@@ -63,10 +63,11 @@ static TArray<FString> StringArrayFromV8(Isolate* isolate, Local<Value> InArray)
 	{
 		auto arr = Local<Array>::Cast(InArray);
 		auto len = arr->Length();
+		auto context = isolate->GetCurrentContext();
 
 		for (decltype(len) Index = 0; Index < len; ++Index)
 		{
-			OutArray.Add(StringFromV8(isolate, arr->Get(Index)));
+			OutArray.Add(StringFromV8(isolate, arr->Get(context, Index).ToLocalChecked()));
 		}
 	}
 	return OutArray;
@@ -1057,8 +1058,8 @@ public:
 
 					MakeFunction();
 
-					auto Decorators = FunctionObj->Get(I.Keyword("Decorators"));
-					if (!Decorators.IsEmpty() && Decorators->IsArray())
+					Local<Value> Decorators;
+					if (FunctionObj->Get(context, I.Keyword("Decorators")).ToLocal(&Decorators) && Decorators->IsArray())
 					{
 						SetFunctionFlags(Function, StringArrayFromV8(isolate, Decorators));
 					}
@@ -1074,7 +1075,11 @@ public:
 
 							for (decltype(len) Index = 0; Index < len; ++Index)
 							{
-								auto PropertyDecl = arr->Get(Index);
+								Local<Value> PropertyDecl;
+								if (!arr->Get(context, Index).ToLocal(&PropertyDecl))
+								{
+									continue;
+								}
 
 								auto NewProperty = CreatePropertyFromDecl(context, I, Function, PropertyDecl);
 
@@ -1152,22 +1157,22 @@ public:
 				return true;
 			};
 
-			auto ClassFlags = Opts->Get(I.Keyword("ClassFlags"));
-			if (!ClassFlags.IsEmpty() && ClassFlags->IsArray())
+			Local<Value> ClassFlags;
+			if (Opts->Get(context, I.Keyword("ClassFlags")).ToLocal(&ClassFlags) && ClassFlags->IsArray())
 			{
 				SetClassFlags(Class,StringArrayFromV8(isolate, ClassFlags));
 			}
 
-			auto PropertyDecls = Opts->Get(I.Keyword("Properties"));
-			if (!PropertyDecls.IsEmpty() && PropertyDecls->IsArray())
+			Local<Value> PropertyDecls;
+			if (Opts->Get(context, I.Keyword("Properties")).ToLocal(&PropertyDecls) && PropertyDecls->IsArray())
 			{
 				auto arr = Local<Array>::Cast(PropertyDecls);
 				auto len = arr->Length();
 
 				for (decltype(len) Index = 0; Index < len; ++Index)
 				{
-					auto PropertyDecl = arr->Get(len - Index - 1);
-					if (PropertyDecl->IsObject())
+					Local<Value> PropertyDecl;
+					if (arr->Get(context, len - Index - 1).ToLocal(&PropertyDecl) && PropertyDecl->IsObject())
 					{
 						auto Property = CreatePropertyFromDecl(context, I, Class, PropertyDecl);
 
@@ -1184,9 +1189,9 @@ public:
 				}
 			}
 
-			auto Functions = Opts->Get(I.Keyword("Functions"));
 			TMap<FString,Local<Value>> Others;
-			if (!Functions.IsEmpty() && Functions->IsObject())
+			Local<Value> Functions;
+			if (Opts->Get(context, I.Keyword("Functions")).ToLocal(&Functions) && Functions->IsObject())
 			{
 				auto FuncMap = Functions->ToObject(context).ToLocalChecked();
 				auto Keys = FuncMap->GetOwnPropertyNames(context).ToLocalChecked();
@@ -1195,11 +1200,11 @@ public:
 
 				for (decltype(NumKeys) Index = 0; Index < NumKeys; ++Index)
 				{
-					auto Name = Keys->Get(Index);
-					auto UName = StringFromV8(isolate, Name);
-					auto Function = FuncMap->Get(Name);
+					Local<Value> Name = Keys->Get(context, Index).ToLocalChecked();
+					FString UName = StringFromV8(isolate, Name);
 
-					if (!Function->IsFunction()) continue;
+					Local<Value> Function;
+					if (!FuncMap->Get(context, Name).ToLocal(&Function)) continue;
 
 					if (UName != TEXT("prector") && UName != TEXT("ctor") && UName != TEXT("constructor"))
 					{
@@ -1227,7 +1232,7 @@ public:
 			}
 
 			auto FinalClass = Context->ExportObject(Class);
-			FinalClass->ToObject(context).ToLocalChecked()->Set(I.Keyword("proxy"), Functions);
+			(void)FinalClass->ToObject(context).ToLocalChecked()->Set(context, I.Keyword("proxy"), Functions);
 
 			info.GetReturnValue().Set(FinalClass);
 
@@ -1268,16 +1273,16 @@ public:
 			Class->ClassDefaultObject = NULL;
 
 			Class->Children = nullptr;
-			auto PropertyDecls = Opts->Get(I.Keyword("Properties"));
-			if (!PropertyDecls.IsEmpty() && PropertyDecls->IsArray())
+			Local<Value> PropertyDecls;
+			if (Opts->Get(context, I.Keyword("Properties")).ToLocal(&PropertyDecls) && PropertyDecls->IsArray())
 			{
 				auto arr = Local<Array>::Cast(PropertyDecls);
 				auto len = arr->Length();
 
 				for (decltype(len) Index = 0; Index < len; ++Index)
 				{
-					auto PropertyDecl = arr->Get(len - Index - 1);
-					if (PropertyDecl->IsObject())
+					Local<Value> PropertyDecl;
+					if (arr->Get(context, len - Index - 1).ToLocal(&PropertyDecl) && PropertyDecl->IsObject())
 					{
 						auto Property = CreatePropertyFromDecl(context, I, Class, PropertyDecl);
 
@@ -1301,23 +1306,23 @@ public:
 			auto prev_v8_template = Context->ExportObject(Class);
 			auto ProxyFunctions = prev_v8_template->ToObject(context).ToLocalChecked()->Get(context, I.Keyword("proxy")).ToLocalChecked();
 
-			auto Functions = Opts->Get(I.Keyword("Functions"));
 			TMap<FString, Local<Value>> Others;
-			if (!Functions.IsEmpty() && Functions->IsObject())
+			Local<Value> Functions;
+			if (Opts->Get(context, I.Keyword("Functions")).ToLocal(&Functions) && Functions->IsObject())
 			{
 				auto FuncMap = Functions->ToObject(context).ToLocalChecked();
 				auto Function0 = FuncMap->Get(context, I.Keyword("ctor")).ToLocalChecked();
 				auto Function1 = FuncMap->Get(context, I.Keyword("prector")).ToLocalChecked();
 
 				auto ProxyFuncMap = ProxyFunctions->ToObject(context).ToLocalChecked();
-				ProxyFuncMap->Set(context, I.Keyword("ctor"), Function0);
-				ProxyFuncMap->Set(context, I.Keyword("prector"), Function1);
+				(void)ProxyFuncMap->Set(context, I.Keyword("ctor"), Function0);
+				(void)ProxyFuncMap->Set(context, I.Keyword("prector"), Function1);
 			}
 
 			Context->Environment->PublicExportUClass(Class);
 
 			auto aftr_v8_template = Context->ExportObject(Class);
-			aftr_v8_template->ToObject(context).ToLocalChecked()->Set(I.Keyword("proxy"), ProxyFunctions);
+			(void)aftr_v8_template->ToObject(context).ToLocalChecked()->Set(context, I.Keyword("proxy"), ProxyFunctions);
 
 			Class->GetDefaultObject(true);
 
@@ -1385,8 +1390,8 @@ public:
 
 				for (decltype(len) Index = 0; Index < len; ++Index)
 				{
-					auto PropertyDecl = arr->Get(len - Index - 1);
-					if (PropertyDecl->IsObject())
+					Local<Value> PropertyDecl;
+					if (arr->Get(context, len - Index - 1).ToLocal(&PropertyDecl) && PropertyDecl->IsObject())
 					{
 						auto Property = CreatePropertyFromDecl(context, I, Struct, PropertyDecl);
 
@@ -1433,8 +1438,8 @@ public:
 
 				for (decltype(len) Index = 0; Index < len; ++Index)
 				{
-					auto PropertyDecl = arr->Get(len - Index - 1);
-					if (PropertyDecl->IsObject())
+					Local<Value> PropertyDecl;
+					if (arr->Get(context, len - Index - 1).ToLocal(&PropertyDecl) && PropertyDecl->IsObject())
 					{
 						auto Property = CreatePropertyFromDecl(context, I, Struct, PropertyDecl);
 
@@ -1456,7 +1461,7 @@ public:
 			Context->Environment->PublicExportStruct(Struct);
 
 			auto aftr_v8_template = Context->ExportObject(Struct);
-			aftr_v8_template->ToObject(context).ToLocalChecked()->Set(context, I.Keyword("proxy"), ProxyFunctions);
+			(void)aftr_v8_template->ToObject(context).ToLocalChecked()->Set(context, I.Keyword("proxy"), ProxyFunctions);
 			auto end = FPlatformTime::Seconds();
 			UE_LOG(Javascript, Warning, TEXT("Rebind UStruct(%s) Elapsed: %.6f"), *Struct->GetName(), end - start);
 #endif
@@ -1535,7 +1540,7 @@ public:
 					{
 						auto module = Object::New(isolate);
 						Local<Value> exports = Object::New(isolate);
-						module->Set(I.Keyword("exports"), exports);
+						(void)module->Set(isolate->GetCurrentContext(), I.Keyword("exports"), exports);
 
 						// prevent circular require
 						Self->Modules.Add(full_path, UniquePersistent<Value>(isolate, exports));
@@ -1759,7 +1764,7 @@ public:
 				const auto& module = it.Value();
 
 				auto FullPath = FPaths::ConvertRelativePathToFull(name);
-				out->Set(V8_String(isolate, name), V8_String(isolate, TCHAR_TO_UTF8(*FullPath)));
+				(void)out->Set(isolate->GetCurrentContext(), V8_String(isolate, name), V8_String(isolate, TCHAR_TO_UTF8(*FullPath)));
 			}
 
 			info.GetReturnValue().Set(out);
@@ -1864,7 +1869,7 @@ public:
 							{
 								Indices[0] = Index;
 								auto ab = ArrayBuffer::New(info.GetIsolate(), Source->GetMemory(Indices), Inner);
-								out_arr->Set(Index, ab);
+								(void)out_arr->Set(context, Index, ab);
 							}
 
 							(void)function->Call(context, info.This(), 1, argv);

@@ -100,16 +100,17 @@ namespace v8
 				// pass return parameter as '$'
 				if (PropertyFlags & CPF_ReturnParm)
 				{
-					auto sub_value = Object->Get(I.Keyword("$"));
-
-					WriteProperty(isolate, ReturnParam, Buffer, sub_value, FNoPropertyOwner());						
+					Local<Value> sub_value;
+					if (Object->Get(context, I.Keyword("$")).ToLocal(&sub_value))
+					{
+						WriteProperty(isolate, ReturnParam, Buffer, sub_value, FNoPropertyOwner());						
+					}
 				}
 				// rejects 'const T&' and pass 'T&' as its name
 				else if ((PropertyFlags & (CPF_ConstParm | CPF_OutParm)) == CPF_OutParm)
 				{
-					auto sub_value = Object->Get(I.Keyword(Param->GetName()));
-
-					if (!sub_value.IsEmpty())
+					Local<Value> sub_value;
+					if (Object->Get(context, I.Keyword(Param->GetName())).ToLocal(&sub_value))
 					{
 						// value can be null if isolate is in trouble
 						WriteProperty(isolate, Param, Buffer, sub_value, FNoPropertyOwner());

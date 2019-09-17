@@ -4,6 +4,8 @@
 #include "Translator.h"
 #include "Misc/FileHelper.h"
 #include "JavascriptIsolate.h"
+#include "GameFramework/Actor.h"
+#include "Engine/World.h"
 
 struct TypingGeneratorBase
 {

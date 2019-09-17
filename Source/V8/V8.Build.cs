@@ -36,10 +36,21 @@ public class V8 : ModuleRules
     public V8(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-        PrivateIncludePaths.AddRange(new string[]
+        if (Target.Platform == UnrealTargetPlatform.IOS || Target.Platform == UnrealTargetPlatform.Android)
         {
-            Path.Combine(ThirdPartyPath, "v8", "include")
-        });
+            PrivateIncludePaths.AddRange(new string[]
+            {
+                Path.Combine(ThirdPartyPath, "v8", "include-7.7.310")
+                //Path.Combine(ThirdPartyPath, "v8", "include")
+            });
+        }
+        else
+        {
+            PrivateIncludePaths.AddRange(new string[]
+            {
+                Path.Combine(ThirdPartyPath, "v8", "include")
+            });
+        }
 
         PublicDependencyModuleNames.AddRange(new string[] 
         { 
@@ -148,16 +159,7 @@ public class V8 : ModuleRules
             PublicLibraryPaths.Add(Path.Combine(LibrariesPath, "ARM64"));
             PublicLibraryPaths.Add(Path.Combine(LibrariesPath, "ARMv7"));
 
-            PublicAdditionalLibraries.Add("v8_init");
-            PublicAdditionalLibraries.Add("v8_initializers");
-            PublicAdditionalLibraries.Add("v8_base");
-            PublicAdditionalLibraries.Add("v8_libbase");
-            PublicAdditionalLibraries.Add("v8_libplatform");
-            PublicAdditionalLibraries.Add("v8_nosnapshot");
-            PublicAdditionalLibraries.Add("v8_libsampler");
-            PublicAdditionalLibraries.Add("torque_generated_initializers");
-            PublicAdditionalLibraries.Add("inspector");
-
+            PublicAdditionalLibraries.Add("v8_monolith");
             PublicDefinitions.Add(string.Format("WITH_V8=1"));
 
             return true;
@@ -201,16 +203,17 @@ public class V8 : ModuleRules
                 LibrariesPath = Path.Combine(LibrariesPath, "Release");
             }
 
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_init.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_initializers.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_base.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libbase.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libplatform.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_nosnapshot.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libsampler.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libtorque_base.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libtorque_generated_initializers.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libinspector.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_init.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_initializers.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_base.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libbase.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libplatform.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_nosnapshot.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libsampler.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libtorque_base.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libtorque_generated_initializers.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libinspector.a"));
+            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_monolith.a"));
 
             PublicDefinitions.Add(string.Format("WITH_V8=1"));
 
@@ -229,15 +232,16 @@ public class V8 : ModuleRules
                 LibrariesPath = Path.Combine(LibrariesPath, "Release");
             }
 
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_init.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_initializers.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_base.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libbase.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libplatform.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_nosnapshot.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libsampler.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libtorque_generated_initializers.a"));
-            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libinspector.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_init.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_initializers.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_base.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libbase.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libplatform.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_nosnapshot.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_libsampler.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libtorque_generated_initializers.a"));
+            // PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libinspector.a"));
+            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "libv8_monolith.a"));
 
             PublicDefinitions.Add(string.Format("WITH_V8=1"));
 

@@ -19,6 +19,7 @@ PRAGMA_DISABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #endif
 
 THIRD_PARTY_INCLUDES_START
+#pragma warning(error : 4996) // 'function' was declared deprecated
 #include "v8.h"
 #include <v8-profiler.h>
 THIRD_PARTY_INCLUDES_END

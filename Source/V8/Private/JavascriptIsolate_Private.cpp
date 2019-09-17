@@ -191,7 +191,7 @@ public:
 					auto Length = arr->Length();					
 					for (decltype(Length) Index = 0; Index < Length; ++Index)
 					{						
-						auto elem = arr->Get(Index);
+						auto elem = arr->Get(context, Index).ToLocalChecked();
 						Local<Value> args[] = {elem};
 						(void)add_fn->Call(context, ProxyObject, 1, args);
 					}
@@ -542,7 +542,7 @@ public:
 				FName TableID;
 				FString Key;
 				auto Context = isolate_->GetCurrentContext();
-				auto TextConstructor = Context->Global()->Get(I.Keyword("FText")).As<Function>();
+				auto TextConstructor = Context->Global()->Get(Context, I.Keyword("FText")).ToLocalChecked().As<Function>();
 
 				if (FTextInspector::GetTableIdAndKey(Data, TableID, Key))
 				{
@@ -608,7 +608,7 @@ public:
 				{
 					Inner->InitializeValue(ElementBuffer);
 					Inner->CopyCompleteValueFromScriptVM(ElementBuffer, helper.GetRawPtr(Index));
-					if (arr->Set(context, Index, ReadProperty(isolate_, Inner, ElementBuffer, FNoPropertyOwner(), Flags)).FromMaybe(true)) {} // V8_WARN_UNUSED_RESULT;
+					(void)arr->Set(context, Index, ReadProperty(isolate_, Inner, ElementBuffer, FNoPropertyOwner(), Flags));
 					Inner->DestroyValue(ElementBuffer);
 				}				
 			}
@@ -616,7 +616,7 @@ public:
 			{
 				for (decltype(len) Index = 0; Index < len; ++Index)
 				{
-					if (arr->Set(context, Index, ReadProperty(isolate_, Inner, helper.GetRawPtr(Index), Owner, Flags)).FromMaybe(true)) {} // V8_WARN_UNUSED_RESULT;
+					(void)arr->Set(context, Index, ReadProperty(isolate_, Inner, helper.GetRawPtr(Index), Owner, Flags));
 				}
 			}
 
@@ -661,7 +661,7 @@ public:
 			{
 				auto PairPtr = SetHelper.GetElementPtr(Index);
 
-				Out->Set(Index, ReadProperty(isolate_, p->ElementProp, SetHelper.GetElementPtr(Index), Owner, Flags));
+				(void)Out->Set(isolate_->GetCurrentContext(), Index, ReadProperty(isolate_, p->ElementProp, SetHelper.GetElementPtr(Index), Owner, Flags));
 			}
 
 			return Out;
@@ -683,7 +683,7 @@ public:
 #endif
 				auto Value = ReadProperty(isolate_, p->ValueProp, PairPtr, Owner, Flags);
 
-				Out->Set(Key, Value);
+				(void)Out->Set(isolate_->GetCurrentContext(), Key, Value);
 			}
 
 			return Out;
@@ -717,9 +717,8 @@ public:
 			FString PropertyName = Property->GetName();
 
 			auto name = I.Keyword(PropertyName);
-			auto value = v8_obj->Get(name);
-
-			if (!value.IsEmpty() && !value->IsUndefined())
+			Local<Value> value;
+			if (v8_obj->Get(isolate_->GetCurrentContext(), name).ToLocal(&value) && !value->IsUndefined())
 			{
 				len--;
 				WriteProperty(isolate_, Property, struct_buffer, value, FNoPropertyOwner(), FPropertyAccessorFlags());
@@ -730,6 +729,7 @@ public:
 	void InternalWriteProperty(UProperty* Property, uint8* Buffer, Local<Value> Value, const IPropertyOwner& Owner, const FPropertyAccessorFlags& Flags, int Offset)
 	{
 		FIsolateHelper I(isolate_);
+		auto context = isolate_->GetCurrentContext();
 
 		if (!Buffer)
 		{
@@ -749,7 +749,7 @@ public:
 		}
 		else if (auto p = Cast<UBoolProperty>(Property))
 		{
-			p->SetPropertyValue_InContainer(Buffer, Value->BooleanValue(isolate_->GetCurrentContext()).ToChecked(), Offset);
+			p->SetPropertyValue_InContainer(Buffer, Value->BooleanValue(isolate_), Offset);
 		}
 		else if (auto p = Cast<UNameProperty>(Property))
 		{			
@@ -775,22 +775,22 @@ public:
 				FText Text = FText::GetEmpty();
 				if (Object->Has(isolate_->GetCurrentContext(), I.Keyword("Table")).FromMaybe(false))
 				{
-					FString Table = StringFromV8(isolate_, Object->Get(I.Keyword("Table")));
-					FString Key = StringFromV8(isolate_, Object->Get(I.Keyword("Key")));
+					FString Table = StringFromV8(isolate_, Object->Get(context, I.Keyword("Table")).FromMaybe<v8::Value>(Undefined(isolate_)));
+					FString Key = StringFromV8(isolate_, Object->Get(context, I.Keyword("Key")).FromMaybe<v8::Value>(Undefined(isolate_)));
 					Text = FText::FromStringTable(*Table, Key);
 				}
 				else if (Object->Has(isolate_->GetCurrentContext(), I.Keyword("Namespace")).FromMaybe(false))
 				{
-					FString Source = StringFromV8(isolate_, Object->Get(I.Keyword("Source")));
-					FString Namespace = StringFromV8(isolate_, Object->Get(I.Keyword("Namespace")));
-					FString Key = StringFromV8(isolate_, Object->Get(I.Keyword("Key")));
+					FString Source = StringFromV8(isolate_, Object->Get(context, I.Keyword("Source")).FromMaybe<v8::Value>(Undefined(isolate_)));
+					FString Namespace = StringFromV8(isolate_, Object->Get(context, I.Keyword("Namespace")).FromMaybe<v8::Value>(Undefined(isolate_)));
+					FString Key = StringFromV8(isolate_, Object->Get(context, I.Keyword("Key")).FromMaybe<v8::Value>(Undefined(isolate_)));
 
 					if (!FText::FindText(Namespace, Key, Text))
 						Text = FText::FromString(Source);
 				}
 				else if (Object->Has(isolate_->GetCurrentContext(), I.Keyword("Source")).FromMaybe(false))
 				{
-					Text = FText::FromString(StringFromV8(isolate_, Object->Get(I.Keyword("Source"))));
+					Text = FText::FromString(StringFromV8(isolate_, Object->Get(context, I.Keyword("Source")).FromMaybe<v8::Value>(Undefined(isolate_))));
 				}
 				else
 				{
@@ -926,7 +926,7 @@ public:
 
 				for (decltype(len) Index = 0; Index < len; ++Index)
 				{
-					WriteProperty(isolate_, p->Inner, helper.GetRawPtr(Index), arr->Get(Index), Owner, Flags);
+					WriteProperty(isolate_, p->Inner, helper.GetRawPtr(Index), arr->Get(context, Index).ToLocalChecked(), Owner, Flags);
 				}
 			}
 			else
@@ -986,8 +986,8 @@ public:
 				else
 				{
 					// maybe path
-					FString AssetPathName = StringFromV8(isolate_, Object->Get(I.Keyword("AssetPathName")));
-					FString SubPathString = StringFromV8(isolate_, Object->Get(I.Keyword("SubPathString")));
+					FString AssetPathName = StringFromV8(isolate_, Object->Get(context, I.Keyword("AssetPathName")).FromMaybe<v8::Value>(Undefined(isolate_)));
+					FString SubPathString = StringFromV8(isolate_, Object->Get(context, I.Keyword("SubPathString")).FromMaybe<v8::Value>(Undefined(isolate_)));
 
 					p->SetPropertyValue_InContainer(Buffer, FSoftObjectPtr(FSoftObjectPath(*AssetPathName, SubPathString)), Offset);
 				}
@@ -1016,7 +1016,7 @@ public:
 				{
 					const int32 ElementIndex = SetHelper.AddDefaultValue_Invalid_NeedsRehash();
 					uint8* ElementPtr = SetHelper.GetElementPtr(Index);
-					WriteProperty(isolate_, p->ElementProp, ElementPtr, arr->Get(Index), Owner, Flags);
+					WriteProperty(isolate_, p->ElementProp, ElementPtr, arr->Get(context, Index).ToLocalChecked(), Owner, Flags);
 				}
 
 				SetHelper.Rehash();
@@ -1204,6 +1204,7 @@ public:
 	{
 		auto func = [](const FunctionCallbackInfo<Value>& info) -> void {
 			auto isolate = info.GetIsolate();
+			auto context = isolate->GetCurrentContext();
 			FIsolateHelper I(isolate);
 
 			if (!info.IsConstructCall())
@@ -1216,26 +1217,26 @@ public:
 			if (info.Length() == 1)
 			{
 				check(info[0]->IsString());
-				self->Set(I.Keyword("Source"), info[0]);
+				(void)self->Set(context, I.Keyword("Source"), info[0]);
 			}
 			else if (info.Length() == 2)
 			{
 				check(info[0]->IsString());
-				self->Set(I.Keyword("Table"), info[0]);
+				(void)self->Set(context, I.Keyword("Table"), info[0]);
 
 				check(info[1]->IsString());
-				self->Set(I.Keyword("Key"), info[1]);
+				(void)self->Set(context, I.Keyword("Key"), info[1]);
 			}
 			else if (info.Length() == 3)
 			{
 				check(info[0]->IsString());
-				self->Set(I.Keyword("Namespace"), info[0]);
+				(void)self->Set(context, I.Keyword("Namespace"), info[0]);
 
 				check(info[1]->IsString());
-				self->Set(I.Keyword("Key"), info[1]);
+				(void)self->Set(context, I.Keyword("Key"), info[1]);
 
 				check(info[2]->IsString());
-				self->Set(I.Keyword("Source"), info[2]);
+				(void)self->Set(context, I.Keyword("Source"), info[2]);
 			}
 		};
 
@@ -1268,6 +1269,7 @@ public:
 
 		auto funcToString = [](const FunctionCallbackInfo<Value>& info) -> void {
 			auto isolate = info.GetIsolate();
+			auto context = isolate->GetCurrentContext();
 			FIsolateHelper I(isolate);
 
 			Local<Object> Self = info.This();
@@ -1275,8 +1277,8 @@ public:
 
 			if (Self->Has(isolate->GetCurrentContext(), I.Keyword("Table")).FromMaybe(false))
 			{
-				FName Table = *StringFromV8(isolate, Self->Get(I.Keyword("Table")));
-				FString Key = StringFromV8(isolate, Self->Get(I.Keyword("Key")));
+				FName Table = *StringFromV8(isolate, Self->Get(context, I.Keyword("Table")).FromMaybe<Value>(Undefined(isolate)));
+				FString Key = StringFromV8(isolate, Self->Get(context, I.Keyword("Key")).FromMaybe<Value>(Undefined(isolate)));
 				FStringTableConstPtr TablePtr = FStringTableRegistry::Get().FindStringTable(Table);
 				if (!TablePtr.IsValid() && LoadObject<UObject>(nullptr, *Table.ToString()))
 				{
@@ -1294,16 +1296,16 @@ public:
 			}
 			else if (Self->Has(isolate->GetCurrentContext(), I.Keyword("Namespace")).FromMaybe(false))
 			{
-				FString Source = StringFromV8(isolate, Self->Get(I.Keyword("Source")));
-				FString Namespace = StringFromV8(isolate, Self->Get(I.Keyword("Namespace")));
-				FString Key = StringFromV8(isolate, Self->Get(I.Keyword("Key")));
+				FString Source = StringFromV8(isolate, Self->Get(context, I.Keyword("Source")).FromMaybe<Value>(Undefined(isolate)));
+				FString Namespace = StringFromV8(isolate, Self->Get(context, I.Keyword("Namespace")).FromMaybe<Value>(Undefined(isolate)));
+				FString Key = StringFromV8(isolate, Self->Get(context, I.Keyword("Key")).FromMaybe<Value>(Undefined(isolate)));
 
 				if (!FText::FindText(Namespace, Key, Text))
 					Text = FText::FromString(Source);
 			}
 			else if (Self->Has(isolate->GetCurrentContext(), I.Keyword("Source")).FromMaybe(false))
 			{
-				Text = FText::FromString(StringFromV8(isolate, Self->Get(I.Keyword("Source"))));
+				Text = FText::FromString(StringFromV8(isolate, Self->Get(context, I.Keyword("Source")).FromMaybe<Value>(Undefined(isolate))));
 			}
 			else
 			{
@@ -1349,7 +1351,7 @@ public:
 				if (Source)
 				{
 					auto ab = ArrayBuffer::New(info.GetIsolate(), Source->GetMemory(), Source->GetSize());
-					ab->Set(I.Keyword("$source"), info[0]);
+					(void)ab->Set(isolate->GetCurrentContext(), I.Keyword("$source"), info[0]);
 					info.GetReturnValue().Set(ab);
 					return;
 				}
@@ -1413,9 +1415,9 @@ public:
 			{
 				auto arr = info[0].As<ArrayBuffer>();
 
-				if (arr->IsNeuterable())
+				if (arr->IsDetachable())
 				{
-					arr->Neuter();
+					arr->Detach();
 
 					GCurrentContents = v8::ArrayBuffer::Contents();
 				}
@@ -1614,7 +1616,8 @@ public:
 					auto value = FetchProperty(Param, NumArgs);
 					if (!value.IsEmpty())
 					{
-						OutParameters->Set(
+						(void)OutParameters->Set(
+							isolate->GetCurrentContext(),
 							// "$"
 							I.Keyword("$"),
 							// property value
@@ -1628,7 +1631,8 @@ public:
 					auto value = FetchProperty(Param, ArgIndex);
 					if (!value.IsEmpty())
 					{
-						OutParameters->Set(
+						(void)OutParameters->Set(
+							isolate->GetCurrentContext(),
 							// parameter name
 							I.Keyword(Param->GetName()),
 							// property value
@@ -2184,6 +2188,7 @@ public:
 				auto Class = reinterpret_cast<UClass*>((Local<External>::Cast(info.Data()))->Value());
 
 				auto isolate = info.GetIsolate();
+				auto context = isolate->GetCurrentContext();
 				FIsolateHelper I(isolate);
 
 				auto self = info.This();
@@ -2191,7 +2196,7 @@ public:
 
 				auto Object_toJSON = [&](Local<Value> value) -> Local<Value>
 				{
-					auto Object = UObjectFromV8(isolate->GetCurrentContext(), value);
+					auto Object = UObjectFromV8(context, value);
 					if (Object == nullptr)
 					{
 						return Null(isolate);
@@ -2234,11 +2239,11 @@ public:
 								value = I.Keyword("null");
 							}
 
-							out->Set(name, value);
+							(void)out->Set(context, name, value);
 						}
 						else if (auto p = Cast<UObjectPropertyBase>(Property))
 						{
-							out->Set(name, Object_toJSON(value));
+							(void)out->Set(context, name, Object_toJSON(value));
 						}
 						else if (auto p = Cast<UArrayProperty>(Property))
 						{
@@ -2248,21 +2253,22 @@ public:
 								auto len = arr->Length();
 
 								auto out_arr = Array::New(isolate, len);
-								out->Set(name, out_arr);
+								(void)out->Set(context, name, out_arr);
 
 								for (decltype(len) Index = 0; Index < len; ++Index)
 								{
-									out_arr->Set(Index, Object_toJSON(arr->Get(Index)));
+									auto Elem = arr->Get(context, Index).ToLocalChecked();
+									(void)out_arr->Set(context, Index, Object_toJSON(Elem));
 								}
 							}
 							else
 							{
-								out->Set(name, value);
+								(void)out->Set(context, name, value);
 							}
 						}
 						else
 						{
-							out->Set(name, value);
+							(void)out->Set(context, name, value);
 						}
 					}
 				}
@@ -2277,6 +2283,7 @@ public:
 				auto Class = reinterpret_cast<UClass*>((Local<External>::Cast(info.Data()))->Value());
 
 				auto isolate = info.GetIsolate();
+				auto context = isolate->GetCurrentContext();
 				FIsolateHelper I(isolate);
 
 				auto self = info.This();
@@ -2327,11 +2334,11 @@ public:
 								value = I.Keyword("null");
 							}
 
-							out->Set(name, value);
+							(void)out->Set(context, name, value);
 						}
 						else if (auto p = Cast<UObjectPropertyBase>(Property))
 						{
-							out->Set(name, Object_toJSON(value));
+							(void)out->Set(context, name, Object_toJSON(value));
 						}
 						else if (auto p = Cast<UArrayProperty>(Property))
 						{
@@ -2341,21 +2348,22 @@ public:
 								auto len = arr->Length();
 
 								auto out_arr = Array::New(isolate, len);
-								out->Set(name, out_arr);
+								(void)out->Set(context, name, out_arr);
 
 								for (decltype(len) Index = 0; Index < len; ++Index)
 								{
-									out_arr->Set(Index, Object_toJSON(arr->Get(Index)));
+									auto Elem = arr->Get(context, Index).ToLocalChecked();
+									(void)out_arr->Set(context, Index, Object_toJSON(Elem));
 								}
 							}
 							else
 							{
-								out->Set(name, value);
+								(void)out->Set(context, name, value);
 							}
 						}
 						else
 						{
-							out->Set(name, value);
+							(void)out->Set(context, name, value);
 						}
 					}
 				}
@@ -2734,14 +2742,15 @@ public:
 	{
 		FIsolateHelper I(isolate_);		
 
+		auto context = isolate_->GetCurrentContext();
 		auto MaxEnumValue = Enum->GetMaxEnumValue();
 		auto arr = Array::New(isolate_, MaxEnumValue);
 
 		for (decltype(MaxEnumValue) Index = 0; Index < MaxEnumValue; ++Index)
 		{
 			auto value = I.Keyword(Enum->GetNameStringByIndex(Index));
-			arr->Set(Index, value);
-			arr->Set(value, value);
+			(void)arr->Set(context, Index, value);
+			(void)arr->Set(context, value, value);
 		}
 
 		// public name
@@ -2936,7 +2945,7 @@ public:
 		auto Context = isolate_->GetCurrentContext();
 		if (!Context.IsEmpty())
 		{
-			Context->Global()->Set(name, Template->GetFunction(Context).ToLocalChecked());
+			(void)Context->Global()->Set(isolate_->GetCurrentContext(), name, Template->GetFunction(Context).ToLocalChecked());
 		}
 
 		// Register this class to the global template so that any other contexts which will be created later have this function template.
