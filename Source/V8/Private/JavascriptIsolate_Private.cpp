@@ -718,7 +718,7 @@ public:
 #endif
 				auto Value = InternalReadProperty(p->ValueProp, PairPtr, Owner, Flags, 0);
 
-				Out->Set(context, Key, Value);
+				(void)Out->Set(context, Key, Value);
 			}
 
 			return Out;
@@ -2326,11 +2326,11 @@ public:
 								value = I.Keyword("null");
 							}
 
-							out->Set(context, name, value);
+							(void)out->Set(context, name, value);
 						}
 						else if (auto p = Cast<UObjectPropertyBase>(Property))
 						{
-							out->Set(context, name, Object_toJSON(value));
+							(void)out->Set(context, name, Object_toJSON(value));
 						}
 						else if (auto p = Cast<UArrayProperty>(Property))
 						{
@@ -2340,25 +2340,25 @@ public:
 								auto len = arr->Length();
 
 								auto out_arr = Array::New(isolate, len);
-								out->Set(context, name, out_arr);
+								(void)out->Set(context, name, out_arr);
 
 								for (decltype(len) Index = 0; Index < len; ++Index)
 								{
 									auto maybe_value = arr->Get(context, Index);
 									if (!maybe_value.IsEmpty())
 									{
-										out_arr->Set(context, Index, Object_toJSON(maybe_value.ToLocalChecked()));
+										(void)out_arr->Set(context, Index, Object_toJSON(maybe_value.ToLocalChecked()));
 									}
 								}
 							}
 							else
 							{
-								out->Set(context, name, value);
+								(void)out->Set(context, name, value);
 							}
 						}
 						else
 						{
-							out->Set(context, name, value);
+							(void)out->Set(context, name, value);
 						}
 					}
 				}
@@ -2424,11 +2424,11 @@ public:
 								value = I.Keyword("null");
 							}
 
-							out->Set(context, name, value);
+							(void)out->Set(context, name, value);
 						}
 						else if (auto p = Cast<UObjectPropertyBase>(Property))
 						{
-							out->Set(context, name, Object_toJSON(value));
+							(void)out->Set(context, name, Object_toJSON(value));
 						}
 						else if (auto p = Cast<UArrayProperty>(Property))
 						{
@@ -2438,25 +2438,25 @@ public:
 								auto len = arr->Length();
 
 								auto out_arr = Array::New(isolate, len);
-								out->Set(context, name, out_arr);
+								(void)out->Set(context, name, out_arr);
 
 								for (decltype(len) Index = 0; Index < len; ++Index)
 								{
 									auto maybe_value = arr->Get(context, Index);
 									if (!maybe_value.IsEmpty())
 									{
-										out_arr->Set(context, Index, Object_toJSON(maybe_value.ToLocalChecked()));
+										(void)out_arr->Set(context, Index, Object_toJSON(maybe_value.ToLocalChecked()));
 									}
 								}
 							}
 							else
 							{
-								out->Set(context, name, value);
+								(void)out->Set(context, name, value);
 							}
 						}
 						else
 						{
-							out->Set(context, name, value);
+							(void)out->Set(context, name, value);
 						}
 					}
 				}
@@ -2841,13 +2841,13 @@ public:
 		for (decltype(EnumLength) Index = 0; Index < EnumLength; ++Index)
 		{
 			auto value = I.Keyword(Enum->GetNameStringByIndex(Index));
-			arr->Set(context, Index, value);
-			arr->Set(context, value, value);
+			(void)arr->Set(context, Index, value);
+			(void)arr->Set(context, value, value);
 		}
 
 		// public name
 		auto name = I.Keyword(FV8Config::Safeify(Enum->GetName()));
-		GetGlobalTemplate()->Set(name, arr);
+		(void)GetGlobalTemplate()->Set(name, arr);
 
 		return arr;
 	}
@@ -3049,7 +3049,7 @@ public:
 			auto maybe_func = Template->GetFunction(Context);
 			if (!maybe_func.IsEmpty())
 			{
-				Context->Global()->Set(Context, name, maybe_func.ToLocalChecked());
+				(void)Context->Global()->Set(Context, name, maybe_func.ToLocalChecked());
 			}
 		}
 

@@ -394,7 +394,7 @@ struct FDelegateManager : IDelegateManager
 		{
 			auto created = CreateDelegate(Object, Property);
 
-			This->Set(context_, cache_id, created);
+			(void)This->Set(context_, cache_id, created);
 			return created;
 		}
 		else

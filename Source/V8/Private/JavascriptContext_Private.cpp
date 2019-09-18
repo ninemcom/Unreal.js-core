@@ -1293,7 +1293,7 @@ public:
 			auto FinalClass = Context->ExportObject(Class);
 			if (!maybe_Functions.IsEmpty())
 			{
-				FinalClass->ToObject(context).ToLocalChecked()->Set(context, I.Keyword("proxy"), maybe_Functions.ToLocalChecked());
+				(void)FinalClass->ToObject(context).ToLocalChecked()->Set(context, I.Keyword("proxy"), maybe_Functions.ToLocalChecked());
 			}
 
 			info.GetReturnValue().Set(FinalClass);
@@ -1843,7 +1843,7 @@ public:
 				const auto& module = it.Value();
 
 				auto FullPath = FPaths::ConvertRelativePathToFull(name);
-				out->Set(context_, V8_String(isolate, name), V8_String(isolate, TCHAR_TO_UTF8(*FullPath)));
+				(void)out->Set(context_, V8_String(isolate, name), V8_String(isolate, TCHAR_TO_UTF8(*FullPath)));
 			}
 
 			info.GetReturnValue().Set(out);
@@ -1948,7 +1948,7 @@ public:
 							{
 								Indices[0] = Index;
 								auto ab = ArrayBuffer::New(info.GetIsolate(), Source->GetMemory(Indices), Inner);
-								out_arr->Set(context, Index, ab);
+								(void)out_arr->Set(context, Index, ab);
 							}
 
 							(void)function->Call(context, info.This(), 1, argv);
