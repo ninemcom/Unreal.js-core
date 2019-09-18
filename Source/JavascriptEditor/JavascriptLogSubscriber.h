@@ -30,7 +30,8 @@ public:
 
 protected:
 
-	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const class FName& Category) override
+	using UObject::Serialize;
+	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const FName& Category) override
 	{
 		OnNewLogMessage.Broadcast(FString(V), FString(FOutputDeviceHelper::VerbosityToString(Verbosity)), Category);
 	}
